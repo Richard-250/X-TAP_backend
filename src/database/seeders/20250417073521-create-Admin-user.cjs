@@ -13,7 +13,7 @@ module.exports = {
 
     if (adminUsers.length === 0) {
       const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash('admin123', salt);
+      const hashedPassword = await bcrypt.hash('WM8542', salt);
       const adminId = uuidv4();
       const firstName = 'Admin';
       const lastName = 'User';
