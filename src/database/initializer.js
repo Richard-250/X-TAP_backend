@@ -16,7 +16,7 @@ export const initDb = async () => {
       // Create default admin user
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(
-        process.env.ADMIN_DEFAULT_PASSWORD || 'admin123', 
+        process.env.ADMIN_DEFAULT_PASSWORD || 'WM8542', 
         salt
       );
       
