@@ -1,7 +1,5 @@
 import Joi from "joi";
 
-
-
 const password = Joi.object({
       currentPassword: Joi.string()
         .pattern(/^WM\d{4}$/)

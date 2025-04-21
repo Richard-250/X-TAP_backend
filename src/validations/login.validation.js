@@ -3,6 +3,12 @@ import Joi from "joi";
 const loginSchema = Joi.object({
       email: Joi.string().email().required(),
       password: Joi.string()
+    .pattern(/^WM\d{4}$/) 
+    .required()
+    .messages({
+      'string.pattern.base': 'Password must be in the format "WM" followed by 4 digits (e.g., WM1234)',
+      'any.required': 'Password is required'
+    })
     
   });
 

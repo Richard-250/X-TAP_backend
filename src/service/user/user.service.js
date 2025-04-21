@@ -14,6 +14,35 @@ export const findUserById = async (id) => {
   return await User.findByPk(id);
 };
 
+export const disableUser = async (userId) => {
+  try {
+    const user = await User.findByPk(userId);
+    
+    if (!user) {
+      return null;
+    }
+
+    // Don't disable already disabled accounts
+    if (user.isEnabled === false) {
+      return { user };
+    }
+    if (user.isVerified === false) {
+      return { user };
+    }
+
+    const updatedUser = await user.update({
+      isEnabled: false,
+      disabledAt: new Date() 
+    });
+
+    return {
+      user: updatedUser,
+    };
+  } catch (error) {
+    throw error;
+  }
+}
+
 export const findUserByVerificationToken = async (token) => {
   return await User.findOne({
     where: {

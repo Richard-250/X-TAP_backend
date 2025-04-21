@@ -1,7 +1,5 @@
-import { getCloudinary } from '../config/cloudinary.config.js';
-import { createUploader } from '../service/user/upload.service.js';
-import db from '../database/models/index.js';
-const { User } = db;
+import { imageUploader } from '../service/user/upload.service.js';
+import profilePhotoService from '../service/user/profilePhoto.service.js';
 import * as userService from '../service/index.service.js';
 
 export const createManager = async (req, res) => {
@@ -293,10 +291,10 @@ export const getAllUsers = async (req, res) => {
       
       console.log(`Manager ${req.user.id} changed user ${userId} role from ${result.roleChange.previousRole} to ${newRole}`);
       
-      res.status(200).json({
+     return res.status(200).json({
         success: true,
         message: 'User role updated successfully',
-        user: result.user,
+        data: result.user,
         roleChange: result.roleChange
       });
     } catch (error) {
@@ -315,248 +313,167 @@ export const getAllUsers = async (req, res) => {
         });
       }
       
-      res.status(500).json({
+    return  res.status(500).json({
         success: false,
         message: 'Failed to update user role',
-        error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+        error: process.env.NODE_ENV === 'testing' ? error.message : 'Internal server error'
       });
     }
   };
 
-// Create a specialized uploader for profile images with specific settings
-const profileImageUploader = createUploader({
-  fileTypes: 'IMAGE', // Only allow image files
-  folder: process.env.CLOUDINARY_PROFILE_IMAGES_FOLDER || 'profile-images',
-  maxSize: 2 * 1024 * 1024, // Limit to 2MB for profile images
-  fieldName: 'profileImage', // Specific field name for profile images
-  maxCount: 1, // Only one profile image per request
-  transformation: {
-    width: 400, // Resize to standard size
-    height: 400,
-    crop: 'fill', // Crop to fill the dimensions
-    gravity: 'face', // Focus on face if present
-    quality: 'auto:good' // Optimize quality
-  }
-});
-
-/**
- * Generate avatar URL based on user's first name
- * @param {String} firstName - User's first name
- * @returns {String} - URL for the generated avatar
- */
-const generateDefaultAvatar = (firstName) => {
-  // Default to first letter of firstName in uppercase
-  const letter = firstName ? firstName.charAt(0).toUpperCase() : 'U';
-  
-  // You can use a service like DiceBear Avatars, UI Avatars, or a custom solution
-  // Here we're using UI Avatars as an example
-  return `https://ui-avatars.com/api/?name=${letter}&background=random&size=400&font-size=0.5`;
-};
-
-// Controller for handling profile image operations
-const profileImageController = {
-  /**
-   * Upload a new profile image
-   * @param {Object} req - Express request object
-   * @param {Object} res - Express response object
-   */
-  uploadProfileImage: async (req, res) => {
+  export const disableUserAccount = async (req, res) => {
     try {
-      // The image should be available in req.file after multer middleware processes it
-      if (!req.file) {
+      const { userId } = req.body;
+      
+      if (!userId) {
         return res.status(400).json({
           success: false,
-          message: 'No profile image uploaded'
+          message: 'Required field: userId'
+        });
+      }
+      
+      // Prevent managers from disabling admin/manager accounts
+      const userToDisable = await userService.findUserById(userId);
+
+      if (userToDisable && ['admin', 'manager'].includes(userToDisable.role)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Forbidden: Cannot disable admin or manager accounts'
         });
       }
 
-      // Get user ID from authenticated user in request
-      const userId = req.user.id;
+      if (userToDisable.isEnabled === false) {
+        return res.status(200).json({
+          success: true,
+          message: 'User account is already disabled',
+          data: userToDisable,
+          status: 'already_disabled'
+        });
+      }
       
-      // Find the user
-      const user = await User.findById(userId);
-      if (!user) {
+      if (userToDisable.isVerified === false) {
+        return res.status(200).json({
+          success: true,
+          message: 'User account is not verified',
+          data: userToDisable,
+          status: 'not_verified'
+        });
+      }
+      
+      const result = await userService.disableUser(userId);
+      
+      if (!result) {
         return res.status(404).json({
           success: false,
-          message: 'User not found'
+          message: 'User not found or not authorized to modify this user'
         });
       }
       
-      // Update user's profilePhoto field with new image URL
-      user.profilePhoto = req.file.path;
-      // Store the publicId for future reference (optional, depends on your User model)
-      if (!user.metadata) user.metadata = {};
-      user.metadata.profilePhotoPublicId = req.file.filename;
-      
-      // Save the updated user
-      await user.save();
-
-      // Return success with the uploaded file details
       return res.status(200).json({
         success: true,
-        message: 'Profile image uploaded successfully',
-        data: {
-          profileImage: req.file.path, // Cloudinary URL
-          publicId: req.file.filename, // Cloudinary public ID
-          format: req.file.format,
-          size: req.file.size
-        }
+        message: 'User account disabled successfully',
+        data: result.user
       });
     } catch (error) {
-      console.error('Profile image upload error:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to upload profile image',
-        error: error.message
-      });
-    }
-  },
-
-  /**
-   * Update an existing profile image (delete old one and upload new one)
-   * @param {Object} req - Express request object
-   * @param {Object} res - Express response object
-   */
-  updateProfileImage: async (req, res) => {
-    try {
-      // The new image should be available in req.file after multer middleware processes it
-      if (!req.file) {
+      
+      if (error.name === 'SequelizeValidationError') {
+        const validationErrors = error.errors.map(err => ({
+          field: err.path,
+          message: err.message
+        }));
+        
         return res.status(400).json({
           success: false,
-          message: 'No profile image uploaded'
+          message: 'Validation failed',
+         error: process.env.NODE_ENV === 'testing' ? validationErrors : 'Internal server error'
         });
       }
-
-      // Get user ID from authenticated user in request
-      const userId = req.user.id;
       
-      // Find the user
-      const user = await User.findById(userId);
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: 'User not found'
-        });
-      }
-
-      // Delete the old profile image if we have a publicId
-      let oldPublicId = req.body.oldPublicId;
-      
-      // If no oldPublicId was provided in the request, try to get it from user metadata
-      if (!oldPublicId && user.metadata && user.metadata.profilePhotoPublicId) {
-        oldPublicId = user.metadata.profilePhotoPublicId;
-      }
-      
-      if (oldPublicId) {
-        const cloudinary = getCloudinary();
-        await cloudinary.uploader.destroy(oldPublicId);
-      }
-      
-      // Update user's profilePhoto field with new image URL
-      user.profilePhoto = req.file.path;
-      // Store the new publicId for future reference
-      if (!user.metadata) user.metadata = {};
-      user.metadata.profilePhotoPublicId = req.file.filename;
-      
-      // Save the updated user
-      await user.save();
-
-      // Return success with the uploaded file details
-      return res.status(200).json({
-        success: true,
-        message: 'Profile image updated successfully',
-        data: {
-          profileImage: req.file.path, // Cloudinary URL
-          publicId: req.file.filename, // Cloudinary public ID
-          format: req.file.format,
-          size: req.file.size
-        }
-      });
-    } catch (error) {
-      console.error('Profile image update error:', error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to update profile image',
-        error: error.message
+        message: 'Failed to disable user account',
+        error: process.env.NODE_ENV === 'testing' ? error.message : 'Internal server error'
       });
     }
-  },
+  };
 
-  /**
-   * Delete a profile image
-   * @param {Object} req - Express request object
-   * @param {Object} res - Express response object
-   */
-  deleteProfileImage: async (req, res) => {
-    try {
-      // Get user ID from authenticated user in request
-      const userId = req.user.id;
-      
-      // Find the user
-      const user = await User.findById(userId);
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: 'User not found'
-        });
-      }
-
-      // Get the publicId from params or from user metadata
-      let publicId = req.params.publicId;
-      if (!publicId && user.metadata && user.metadata.profilePhotoPublicId) {
-        publicId = user.metadata.profilePhotoPublicId;
-      }
-      
-      if (!publicId) {
-        return res.status(400).json({
-          success: false,
-          message: 'Public ID is required to delete a profile image'
-        });
-      }
-
-      // Delete the image from Cloudinary
-      const cloudinary = getCloudinary();
-      const result = await cloudinary.uploader.destroy(publicId);
-
-      if (result.result === 'ok') {
-        // Generate default avatar URL based on user's first name
-        const defaultAvatar = generateDefaultAvatar(user.firstName);
+export const profilePhotoController = {
+  uploadProfilePhoto: [
+    // Middleware to handle the file upload
+    imageUploader.customHandler('single'),
+    
+    async (req, res) => {
+      try {
+        const userId = req.user.id;
+        const file = req.file;
         
-        // Update user's profilePhoto to default avatar
-        user.profilePhoto = defaultAvatar;
-        // Remove publicId from metadata
-        if (user.metadata) {
-          delete user.metadata.profilePhotoPublicId;
+        if (!file) {
+          return res.status(400).json({
+            success: false,
+            message: 'No image file provided'
+          });
         }
-        
-        // Save the updated user
-        await user.save();
+
+        // Find the user by ID
+        const user = await userService.findUserById(userId);
+        if (!user) {
+          return res.status(404).json({
+            success: false,
+            message: 'User not found'
+          });
+        }
+
+        // Update profile photo using service
+        const updatedUser = await profilePhotoService.updateProfilePhoto(user, file);
 
         return res.status(200).json({
           success: true,
-          message: 'Profile image deleted successfully',
+          message: 'Profile photo updated successfully',
           data: {
-            profileImage: defaultAvatar
+            profilePhoto: updatedUser.profilePhoto
           }
         });
-      } else {
-        return res.status(400).json({
+      } catch (error) {
+        console.error('Error in profile photo upload:', error);
+        return res.status(500).json({
           success: false,
-          message: 'Failed to delete profile image',
-          data: result
+          message: 'Failed to update profile photo',
+            error: process.env.NODE_ENV === 'testing' ? error.message : 'Internal server error'
         });
       }
+    }
+  ],
+
+  deleteProfilePhoto: async (req, res) => {
+    try {
+      const userId = req.user.id;
+      
+      // Find the user by ID
+      const user = await userService.findUserById(userId);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+
+      // Delete profile photo and generate avatar using service
+      const updatedUser = await profilePhotoService.deleteProfilePhoto(user);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Profile photo replaced with avatar',
+        data: {
+          profilePhoto: updatedUser.profilePhoto
+        }
+      });
     } catch (error) {
-      console.error('Profile image deletion error:', error);
+      console.error('Error handling profile photo deletion:', error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to delete profile image',
-        error: error.message
+        message: 'Failed to process profile photo',
+         error: process.env.NODE_ENV === 'testing' ? error.message : 'Internal server error'
       });
     }
   }
 };
-
-// Export the uploader middleware and controller
-export const profileImageMiddleware = profileImageUploader;
-export default profileImageController;

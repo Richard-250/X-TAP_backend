@@ -49,16 +49,16 @@ export const verifyAccount = async (req, res) => {
     
     const { user: verifiedUser } = await userService.verifyUserAccount(user);
     
-    res.status(200).json({ 
+    return res.status(200).json({ 
       success: true,
       message: 'Account verified successfully. Check your email for your password.',
       role: verifiedUser.role
     });
   } catch (error) {
-    res.status(500).json({ 
+    return res.status(500).json({ 
       success: false,
       message: 'Verification failed', 
-       error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 };
@@ -116,17 +116,18 @@ export const changePassword = async (req, res) => {
       await userService.sendPasswordEmail(user, newPasswordWithPrefix);
     } catch (emailErr) {
       console.error('Failed to send password email:', emailErr.message);
+      // Continue even if email fails since password change was successful
     }
     
-    res.status(200).json({ 
+    return res.status(200).json({ 
       success: true,
       message: 'Password changed successfully' 
     });
   } catch (error) {
-    res.status(500).json({ 
+    return res.status(500).json({ 
       success: false,
       message: 'Failed to change password', 
-        error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 };
@@ -167,19 +168,19 @@ export const resendVerificationEmail = async (req, res) => {
     
     const { verificationExpires } = await userService.regenerateVerificationToken(user);
     
-    res.status(200).json({ 
+    return res.status(200).json({ 
       success: true,
       message: 'New verification email sent successfully',
       expiresAt: verificationExpires
     });
   } catch (error) {
-    res.status(500).json({ 
+    return res.status(500).json({ 
+      success: false,
       message: 'Failed to resend verification email', 
-       error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      error: process.env.NODE_ENV === 'testing' ? error.message : 'Internal server error'
     });
   }
 };
-
 export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -193,16 +194,16 @@ export const forgotPassword = async (req, res) => {
     
     const result = await authService.processForgotPassword(email);
     
-    res.status(result.code).json({
+    return res.status(result.code).json({
       success: result.success,
       message: result.message
     });
   } catch (error) {
     console.error('Forgot password error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'An error occurred. Please try again later.',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      error: process.env.NODE_ENV === 'testing' ? error.message : 'Internal server error'
     });
   }
 };
@@ -222,7 +223,10 @@ export const resetPassword = async (req, res) => {
     try {
       email = decodeURIComponent(encodedEmail);
     } catch (error) {
-      email = encodedEmail;
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid email encoding'
+      });
     }
     
     if (!isValidEmail(email)) {
@@ -242,16 +246,18 @@ export const resetPassword = async (req, res) => {
     
     const { user: updatedUser } = await userService.resetUserPassword(user);
     
-    res.status(200).json({
+    return res.status(200).json({
+      data: updatedUser,
       success: true,
       message: 'Password reset successful. Check your email for the new password.'
     });
+
   } catch (error) {
     console.error('Password reset error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'An error occurred during password reset',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      error: process.env.NODE_ENV === 'testing' ? error.message : 'internal server error'
     });
   }
 };
@@ -260,6 +266,13 @@ export const passwordViewHandler = (req, res) => {
   const { token } = req.params;
   const JWT_SECRET = process.env.JWT_PASSWORD_SECRET;
   
+  if (!JWT_SECRET) {
+    return res.status(500).render('password-expired', {
+      success: false,
+      message: 'Server configuration error.'
+    });
+  }
+
   try {
     const decodedToken = jwt.verify(token, JWT_SECRET);
     
@@ -271,7 +284,7 @@ export const passwordViewHandler = (req, res) => {
     
     const { password, userId } = decodedToken;
     
-    res.render('view-password', {
+    return res.render('view-password', {
       password,
       token,
       userId
@@ -287,10 +300,8 @@ export const passwordViewHandler = (req, res) => {
     return res.status(403).render('password-expired', {
       success: false,
       message: 'Invalid password link.',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      error: process.env.NODE_ENV === 'testing' ? error.message : 'Internal server error'
     });
   }
 };
-
-
 

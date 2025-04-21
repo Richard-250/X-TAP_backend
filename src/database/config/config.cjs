@@ -20,7 +20,7 @@ module.exports = {
   test: {
     username: process.env.DB_USERNAME || 'postgres', // Fallback for local testing
     password: process.env.DB_PASSWORD || 'poprich', // Fallback (remove in production)
-    database: process.env.DB_NAME || 'iTunda-system', // Fallback
+    database: process.env.DB_NAME || 'iTunda-system_testing', // Fallback
     host: process.env.DB_HOST || '127.0.0.1', // Fallback
     dialect: 'postgres',
     logging: false

@@ -323,10 +323,13 @@ export const sendPasswordEmail = async (user, password) => {
 
   try {
     const info = await transporter.sendMail(mailOptions);
-    console.log('Password email sent: %s', info.messageId);
     return info;
   } catch (error) {
-    console.error('Error sending password email:', error);
+    if (process.env.NODE_ENV === 'testing') {
+      throw error;
+    }
+    error.statusCode = 500;
+    error.message = 'Internal Server Error';
     throw error;
   }
 };
@@ -345,10 +348,13 @@ export const sendVerificationEmail = async (user, token) => {
   
     try {
       const info = await transporter.sendMail(mailOptions);
-      console.log('Verification email sent: %s', info.messageId);
       return info;
     } catch (error) {
-      console.error('Error sending verification email:', error);
+      if (process.env.NODE_ENV === 'testing') {
+        throw error;
+      }
+      error.statusCode = 500;
+      error.message = 'Internal Server Error';
       throw error;
     }
   };  
@@ -423,10 +429,13 @@ export const sendPasswordResetEmail = async (user, token) => {
 
   try {
     const info = await transporter.sendMail(mailOptions);
-    console.log('Password reset email sent: %s', info.messageId);
     return info;
   } catch (error) {
-    console.error('Error sending password reset email:', error);
+    if (process.env.NODE_ENV === 'testing') {
+      throw error;
+    }
+    error.statusCode = 500;
+    error.message = 'Internal Server Error';
     throw error;
   }
 };
@@ -507,10 +516,14 @@ export const sendWelcomeEmail = async (user) => {
 
   try {
     const info = await transporter.sendMail(mailOptions);
-    console.log('Welcome email sent: %s', info.messageId);
     return info;
   } catch (error) {
-    console.error('Error sending welcome email:', error);
+    
+    if (process.env.NODE_ENV === 'testing') {
     throw error;
+  }
+  error.statusCode = 500;
+  error.message = 'Internal Server Error';
+  throw error;
   }
 };
