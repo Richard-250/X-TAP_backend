@@ -88,6 +88,14 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+    disabledAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    isFirstLogin: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
     isPublic: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,

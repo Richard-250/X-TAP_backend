@@ -17,7 +17,7 @@ module.exports = {
         }
       }
     },
-  test: {
+  testing: {
     username: process.env.DB_USERNAME || 'postgres', // Fallback for local testing
     password: process.env.DB_PASSWORD || 'poprich', // Fallback (remove in production)
     database: process.env.DB_NAME || 'iTunda-system_testing', // Fallback

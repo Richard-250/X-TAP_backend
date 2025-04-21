@@ -17,6 +17,9 @@
   "license": "ISC",
   "description": "Building Backend system with NFC enabled Student Card",
   "type": "module",
+  "engines": {
+    "npm": ">=7.0.0"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "cloudinary": "^1.37.0",

@@ -108,70 +108,146 @@ export const createUser = async (req, res) => {
     });
   }
 };
-
 export const getAllUsers = async (req, res) => {
-    try {
-      if (req.user.role !== 'admin') {
-        return res.status(403).json({
+  try {
+    // Authorization check
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized: Only admin users can access all user data'
+      });
+    }
+    
+    // Extract and validate pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    
+    if (page < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid page parameter. Page must be greater than 0.'
+      });
+    }
+    
+    if (limit < 1 || limit > 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid limit parameter. Limit must be between 1 and 100.'
+      });
+    }
+    
+    // Extract filters, removing pagination params
+    const filters = { ...req.query };
+    delete filters.page;
+    delete filters.limit;
+    
+    // Validate date parameters
+    const dateParams = Object.keys(filters).filter(key => 
+      key.includes('[gte]') || key.includes('[lte]')
+    );
+    
+    for (const param of dateParams) {
+      const dateValue = filters[param];
+      if (dateValue && isNaN(Date.parse(dateValue))) {
+        return res.status(400).json({
           success: false,
-          message: 'Unauthorized: Only admin users can access all user data'
+          message: `Invalid date format for parameter: ${param}`
         });
       }
-      
-      const page = parseInt(req.query.page) || 1;
-      const limit = 10;
-      const filters = { ...req.query };
-      delete filters.page;
-      
-      const result = await userService.getAllUsers(filters, page, limit);
-      
-      res.status(200).json({
-        success: true,
-        message: 'Filtered users retrieved successfully',
-        data: result.users,
-        pagination: result.pagination,
-        filters
-      });
-    } catch (error) {
-      console.error('Error fetching filtered users:', error);
-      res.status(500).json({
+    }
+    
+    // Fetch users with filters
+    const result = await userService.getAllUsers(filters, page, limit);
+    
+    // Return success response
+    res.status(200).json({
+      success: true,
+      message: 'Filtered users retrieved successfully',
+      data: result.users,
+      pagination: result.pagination,
+      filters
+    });
+  } catch (error) {
+    console.error('Error fetching filtered users:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve users',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+export const getUserByManager = async (req, res) => {
+  try {
+    // Extract and validate pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    
+    if (page < 1) {
+      return res.status(400).json({
         success: false,
-        message: 'Failed to retrieve users',
-        error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+        message: 'Invalid page parameter. Page must be greater than 0.'
       });
     }
-  };
-  
-  export const getUserByManager = async (req, res) => {
-    try {
-      const page = parseInt(req.query.page) || 1;
-      const limit = 10;
-      const filters = { ...req.query };
-      delete filters.page;
-      
-      const result = await userService.getNonAdminUsers(filters, page, limit);
-      
-      res.status(200).json({
-        success: true,
-        message: 'Users retrieved successfully (excluding admins and managers)',
-        data: result.users,
-        pagination: result.pagination,
-        filters,
-        restrictions: {
-          alwaysExcludedRoles: ['admin', 'manager'],
-          onlyVerifiedUsers: true
-        }
-      });
-    } catch (error) {
-      console.error('Error fetching users:', error);
-      res.status(500).json({
+    
+    if (limit < 1 || limit > 100) {
+      return res.status(400).json({
         success: false,
-        message: 'Failed to retrieve users',
-        error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+        message: 'Invalid limit parameter. Limit must be between 1 and 100.'
       });
     }
-  };
-  
+    
+    // Extract filters, removing pagination params
+    const filters = { ...req.query };
+    delete filters.page;
+    delete filters.limit;
+    
+    // Validate date parameters
+    const dateParams = Object.keys(filters).filter(key => 
+      key.includes('[gte]') || key.includes('[lte]')
+    );
+    
+    for (const param of dateParams) {
+      const dateValue = filters[param];
+      if (dateValue && isNaN(Date.parse(dateValue))) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid date format for parameter: ${param}`
+        });
+      }
+    }
+    
+    // Apply additional authorization logic if needed
+    // For example, managers might only see users they created
+    // if (req.user.role === 'manager') {
+    //   filters.createdBy = req.user.id;
+    // }
+    
+    // Fetch users with filters
+    const result = await userService.getNonAdminUsers(filters, page, limit);
+    
+    // Return success response
+    res.status(200).json({
+      success: true,
+      message: 'Users retrieved successfully (excluding admins and managers)',
+      data: result.users,
+      pagination: result.pagination,
+      filters,
+      restrictions: {
+        alwaysExcludedRoles: ['admin', 'manager'],
+        onlyVerifiedUsers: true,
+        onlyEnabledUsers: true
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve users',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
   export const getMyProfile = async (req, res) => {
     try {
       const userId = req.user.id;
@@ -324,7 +400,6 @@ export const getAllUsers = async (req, res) => {
   export const disableUserAccount = async (req, res) => {
     try {
       const { userId } = req.body;
-      
       if (!userId) {
         return res.status(400).json({
           success: false,
@@ -334,7 +409,6 @@ export const getAllUsers = async (req, res) => {
       
       // Prevent managers from disabling admin/manager accounts
       const userToDisable = await userService.findUserById(userId);
-
       if (userToDisable && ['admin', 'manager'].includes(userToDisable.role)) {
         return res.status(403).json({
           success: false,

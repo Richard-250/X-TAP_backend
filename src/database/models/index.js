@@ -20,29 +20,19 @@ require('dotenv').config();
 
 let sequelize;
 
-if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'testing') {
-  sequelize = new Sequelize(
-    process.env.DB_NAME,
-    process.env.DB_USERNAME,
-    process.env.DB_PASSWORD,
-    {
-      host: process.env.DB_HOST,
-      dialect: 'postgres',
-      logging: false,
-    }
-  );
-} else {
-  // Default to development or production config
+if (process.env.NODE_ENV === 'development' && process.env.DATABASE_URL) {
   sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
     dialectOptions: {
       ssl: {
         require: true,
-        rejectUnauthorized: false
+        rejectUnauthorized: false,
       }
     },
     logging: false,
   });
+} else {
+  sequelize = new Sequelize(config.database, config.username, config.password, config);
 }
 
 module.exports = sequelize;

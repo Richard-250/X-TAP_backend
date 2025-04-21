@@ -1,6 +1,6 @@
 import { generateToken } from "../../utils/password.js";
 import { findUserByEmail, validateUserPassword, generatePasswordResetToken } from "../user/user.service.js";
-import { sendPasswordResetEmail } from "../user/email.service.js";
+import { sendPasswordResetEmail, sendWelcomeEmail } from "../user/email.service.js";
 
 export const authenticateUser = async (email, password) => {
   // Check if user exists
@@ -22,6 +22,16 @@ export const authenticateUser = async (email, password) => {
   const isPasswordValid = await validateUserPassword(password, user.password);
   if (!isPasswordValid) {
     return { success: false, code: 401, message: 'Invalid password' };
+  }
+
+  if (user.isFirstLogin === true) {
+    // Fire-and-forget the email (won't delay login)
+   await sendWelcomeEmail(user).catch(emailError => {
+      if (process.env.NODE_ENV === 'testing') console.error(emailError);
+    });
+    
+    // Always update the flag regardless of email success
+    await user.update({ isFirstLogin: false }); 
   }
   
   // Generate JWT token
