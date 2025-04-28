@@ -9,6 +9,8 @@ const router = express.Router();
 
 
 router.post('/login', validateLogin, authController.login);
+router.post('/login-token/generate', validateLogin, authenticated, authController.generateNfcToken);
+router.post('/login/nfc-token', authController.loginWithNfcToken);
 router.get('/verify/:token', authController.verifyAccount);
 router.post('/change-password', validateChangePassword, authenticated, isVerified, authController.changePassword);
 router.post('/resend-verification', validateEmail, authController.resendVerificationEmail);

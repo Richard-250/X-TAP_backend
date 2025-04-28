@@ -108,6 +108,7 @@ export const createUser = async (req, res) => {
     });
   }
 };
+
 export const getAllUsers = async (req, res) => {
   try {
     // Authorization check

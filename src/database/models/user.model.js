@@ -61,7 +61,7 @@ module.exports = (sequelize, DataTypes) => {
       references: {
         model: 'Users',
         key: 'id'
-      }
+      },
     },
     lastLogin: {
       type: DataTypes.DATE,
@@ -140,9 +140,32 @@ module.exports = (sequelize, DataTypes) => {
     addressLine2: {
       type: DataTypes.STRING,
       allowNull: true,
+    },
+    title: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'Professional title or designation of the user'
+    },
+    nfcLoginToken: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: 'Token used for NFC-based authentication'
+    },
+    nfcLoginTokenExpires: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Expiration date for the NFC login token'
     }
   }, {
     timestamps: true,
+    // indexes: [
+    //   {
+    //     fields: ['role']
+    //   },
+    //   {
+    //     fields: ['createdBy']
+    //   }
+    // ],
     getterMethods: {
       age() {
         if (!this.dateOfBirth) return null;

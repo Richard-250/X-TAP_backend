@@ -30,7 +30,89 @@ export const login = async (req, res) => {
     res.status(500).json({ 
       success: false,
       message: 'Login failed', 
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      error: process.env.NODE_ENV === 'testing' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+export const generateNfcToken = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Email and password are required',
+        data: null
+      });
+    }
+    
+    const nfcResult = await authService.generateNfcLoginToken(email, password);
+    
+    if (!nfcResult.success) {
+      return res.status(nfcResult.code).json({ 
+        success: false,
+        message: nfcResult.message,
+        data: null
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      message: 'NFC login token generated successfully',
+      data: {
+        nfcToken: nfcResult.nfcToken,
+        expiresAt: nfcResult.expiresAt,
+        user: {
+          title: nfcResult.title,
+          profilePhoto: nfcResult.profilePhoto
+          // Add other user fields if available from the service
+        }
+      }
+    });
+    
+  } catch (error) {
+    res.status(500).json({ 
+      success: false,
+      message: 'NFC token generation failed',
+      data: null,
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+export const loginWithNfcToken = async (req, res) => {
+  try {
+    const { nfcToken } = req.body;
+    
+    if (!nfcToken) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'NFC token is required' 
+      });
+    }
+    
+    const authResult = await authService.authenticateWithNfcToken(nfcToken);
+    
+    if (!authResult.success) {
+      return res.status(authResult.code).json({ 
+        success: false,
+        message: authResult.message 
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      message: 'NFC login successful',
+      token: authResult.token,
+      data: authResult.data
+    });
+    
+  } catch (error) {
+    res.status(500).json({ 
+      success: false,
+      message: 'NFC login failed', 
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };

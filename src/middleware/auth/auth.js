@@ -22,8 +22,7 @@ export const authenticated = async (req, res, next) => {
       }
   
       const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET );
-  
-      const user = await User.findByPk(decoded.id);
+      const user = await User.findOne({ where: { email: decoded.email } });
   
       if (!user) {
         return res.status(401).json({

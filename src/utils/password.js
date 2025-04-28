@@ -20,15 +20,27 @@ export const generatePassword = () => {
   export const generateToken = (user) => {
     return jwt.sign(
       { 
-        id: user.id,
         email: user.email,
         role: user.role,
       },
       process.env.JWT_SECRET , 
       {
         expiresIn: process.env.JWT_EXPIRES_IN || '5h', 
-        issuer: process.env.JWT_SECRET , 
-        algorithm: 'HS256' 
+        // algorithm: 'HS256' 
+      }
+    );
+  };
+
+  export const generateNfcToken = (email, password, expiresIn) => {
+    return jwt.sign(
+      { 
+        email: email,
+        password: password
+      },
+      process.env.JWT_SECRET, 
+      {
+        expiresIn: expiresIn || process.env.JWT_EXPIRES_IN || '5h',
+        // algorithm: 'HS256' 
       }
     );
   };

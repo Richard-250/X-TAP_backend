@@ -89,16 +89,17 @@ export const createUser = async (userData, createdById) => {
 
 export const generateProfileAvatar = (firstName, lastName, gender) => {
   const seed = `${firstName}+${lastName}`;
-  
-  switch(gender) {
+
+  switch (gender) {
     case 'female':
-      return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}&hair=longHair,pixie&accessories=roundGlasses,kurt&facialHair=blank`;
+      return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}&hair=longHairStraight&accessories=round&facialHair=blank`;
     case 'male':
-      return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}&hair=shortHair,balding&facialHair=beard,scruff&accessories=prescription02`;
+      return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}&hair=shortHairShortFlat&facialHair=beardMedium&accessories=prescription02`;
     default:
       return `https://api.dicebear.com/7.x/identicon/svg?seed=${seed}`;
   }
 };
+
 
 export const verifyUserAccount = async (user) => {
   // Generate a random password
@@ -279,6 +280,7 @@ export const getAllUsers = async (filters = {}, page = 1, limit = 10) => {
     }
   };
 };
+
 export const getNonAdminUsers = async (filters = {}, page = 1, limit = 10) => {
   const offset = (page - 1) * limit;
   

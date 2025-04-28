@@ -23,6 +23,7 @@ const signUpSchema = Joi.object({
   isPublic: Joi.boolean().default(true),
        // Address fields
   country: Joi.string().max(100).allow(null, ''),
+  title: Joi.string().max(100).required(),
   city: Joi.string().max(100).allow(null, ''),
   province: Joi.string().max(100).allow(null, ''),
   district: Joi.string().max(100).allow(null, ''),
