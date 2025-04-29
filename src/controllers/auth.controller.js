@@ -121,27 +121,30 @@ export const verifyAccount = async (req, res) => {
   try {
     const { token } = req.params;
     
-    const user = await userService.findUserByVerificationToken(token);
+    // Start token lookup
+    const userPromise = userService.findUserByVerificationToken(token);
+    
+    // Send immediate acknowledgment response
+    res.status(202).json({ 
+      success: true,
+      message: 'Verification request received. Processing...',
+    });
+    
+    // Continue processing in the background
+    const user = await userPromise;
     if (!user) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Invalid or expired verification token' 
-      });
+      // Log error since we already sent a response
+      console.error('Invalid or expired verification token');
+      return;
     }
     
-    const { user: verifiedUser } = await userService.verifyUserAccount(user);
+    // Process verification
+    await userService.verifyUserAccount(user);
     
-    return res.status(200).json({ 
-      success: true,
-      message: 'Account verified successfully. Check your email for your password.',
-      role: verifiedUser.role
-    });
+    // No need to send another response - process is complete
   } catch (error) {
-    return res.status(500).json({ 
-      success: false,
-      message: 'Verification failed', 
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
-    });
+    console.error('Verification failed:', error.message);
+    // No need to send error response since we already responded
   }
 };
 
@@ -263,6 +266,7 @@ export const resendVerificationEmail = async (req, res) => {
     });
   }
 };
+
 export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;

@@ -14,7 +14,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.UUID,
       allowNull: false,
       unique: true,
-      defaultValue: DataTypes.UUIDV4 // ✅ Automatically generate UUID
+      defaultValue: DataTypes.UUIDV4 
     },
     isActive: {
       type: DataTypes.BOOLEAN,

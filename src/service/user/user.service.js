@@ -105,19 +105,26 @@ export const verifyUserAccount = async (user) => {
   // Generate a random password
   const newPassword = generatePassword();
   const hashedPassword = await hashPassword(newPassword);
-  
-  // Update user
+    
+  // Update user data
   user.isVerified = true;
   user.password = hashedPassword;
   user.verificationToken = null;
   user.verificationExpires = null;
-  await user.save();
   
-  // Send password email
-  await sendPasswordEmail(user, newPassword);
-  
+  // Execute user save and email sending in parallel
+  await Promise.all([
+    user.save(),
+    sendPasswordEmail(user, newPassword).catch(err => {
+      console.error('Failed to send password email:', err);
+      // Don't reject the promise, so verification continues even if email fails
+      return null; 
+    })
+  ]);
+    
   return { user, newPassword };
 };
+
 
 export const updateUserPassword = async (user, newPassword) => {
   const hashedPassword = await hashPassword(newPassword);

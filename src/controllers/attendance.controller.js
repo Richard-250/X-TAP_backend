@@ -1,100 +1,7 @@
 import db from '../database/models/index.js';
 import { Op} from 'sequelize';
 const { Student, Class, Course, GlobalAttendanceConfig, Attendance, } = db;
-import { generateStudentId } from '../utils/generateStudentId.js';
 
-    // Function to generate profile avatar based on name and gender
-    const generateProfileAvatar = (firstName, lastName, gender) => {
-      const seed = `${firstName}+${lastName}`;
-    
-      switch (gender) {
-        case 'female':
-          return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}&hair=longHairStraight&accessories=round&facialHair=blank`;
-        case 'male':
-          return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}&hair=shortHairShortFlat&facialHair=beardMedium&accessories=prescription02`;
-        default:
-          return `https://api.dicebear.com/7.x/identicon/svg?seed=${seed}`;
-      }
-    };
-
-// Updated student registration function
-export const registerStudent = async (req, res) => {
-  try {
-    const {
-      firstName,
-      lastName,
-      email,
-      phoneNumber,
-      dateOfBirth,
-      gender,
-      country,
-      city,
-      province,
-      district,
-      sector,
-      village,
-      road,
-      postalCode,
-      addressLine1,
-      addressLine2,
-      classId,
-      courseId,
-      profilePhoto // Optional
-    } = req.body;
-
-    // Optional: Validate if classId and courseId exist
-    const classExists = await Class.findByPk(classId);
-    if (!classExists) {
-      return res.status(404).json({ message: 'Class not found' });
-    }
-
-    const courseExists = await Course.findByPk(courseId);
-    if (!courseExists) {
-      return res.status(404).json({ message: 'Course not found' });
-    }
-
-    // Generate default avatar if profilePhoto is not provided
-    const studentProfilePhoto = profilePhoto || generateProfileAvatar(firstName, lastName, gender);
-    
-    // Generate a unique student ID
-    const studentId = await generateStudentId();
-
-    // Create the student
-    const newStudent = await Student.create({
-      firstName,
-      lastName,
-      email,
-      profilePhoto: studentProfilePhoto,
-      phoneNumber,
-      dateOfBirth,
-      gender,
-      country,
-      city,
-      province,
-      district,
-      sector,
-      village,
-      road,
-      postalCode,
-      addressLine1,
-      addressLine2,
-      classId,
-      courseId,
-      studentId, // Add the generated student ID
-     
-    });
-
-
-    return res.status(201).json({
-      message: 'Student registered successfully',
-      data: newStudent
-    });
-
-  } catch (error) {
-    console.error('Error registering student:', error);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
 
 export const recordAttendance = async (req, res) => {
   const { studentId } = req.body;
@@ -415,6 +322,198 @@ export const getStudentAttendance = async (req, res) => {
   }
 };
 
+export const updateAttendanceStatus = async (req, res) => {
+  const { studentId } = req.params;
+  const { status } = req.body;
+  
+  // Validate status
+  const validStatuses = ['PRESENT', 'LATE', 'ABSENT'];
+  if (!validStatuses.includes(status.trim().toUpperCase())) {
+    return res.status(400).json({
+      success: false,
+      message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+    });
+  }
+  
+  try {
+    // Get today's date
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Find the student
+    const student = await Student.findOne({
+      where: { 
+
+           studentId: studentId 
+
+      }
+    });
+    // console.log('stuent:', student)
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+    
+    // Find today's attendance record for this student
+    const attendanceRecord = await Attendance.findOne({
+      where: {
+        studentId: student.studentId,
+        date: today
+      }
+    });
+    
+    if(!attendanceRecord) { return res.status(400).json({ success: false, message: 'No attendance record found' })}
+    // Update the existing record
+    attendanceRecord.status = status.trim().toUpperCase();
+    await attendanceRecord.save();
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Attendance status updated successfully',
+      data: attendanceRecord
+    });
+    
+  } catch (error) {
+    console.error('Update attendance status error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update attendance status',
+      error: error.message
+    });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export const searchAttendance = async (req, res) => {
+  const { 
+    classId, 
+    status, 
+    date, 
+    startDate, 
+    endDate, 
+    studentName,
+    sortBy = 'date', 
+    sortOrder = 'DESC',
+    page = 1, 
+    limit = 10 
+  } = req.query;
+  
+  try {
+    const attendanceWhere = {};
+    if (classId) attendanceWhere.classId = classId;
+    if (status) attendanceWhere.status = status.toUpperCase();
+    if (date) {
+      attendanceWhere.date = date;
+    } else if (startDate || endDate) {
+      attendanceWhere.date = {};
+      if (startDate) attendanceWhere.date[Op.gte] = startDate;
+      if (endDate) attendanceWhere.date[Op.lte] = endDate;
+    }
+
+    const studentWhere = {};
+    if (studentName) {
+      studentWhere[Op.or] = [
+        { firstName: { [Op.iLike]: `%${studentName}%` } },
+        { lastName: { [Op.iLike]: `%${studentName}%` } }
+      ];
+    }
+
+    const offset = (page - 1) * limit;
+    
+    let order = [];
+    if (sortBy === 'status') {
+      order.push(['status', sortOrder]);
+    } else if (sortBy === 'date') {
+      order.push(['date', sortOrder]);
+      order.push(['tapTime', 'ASC']);
+    } else if (sortBy === 'studentName') {
+      order.push([{ model: Student, as: 'Student' }, 'lastName', sortOrder]);
+      order.push([{ model: Student, as: 'Student' }, 'firstName', sortOrder]);
+    } else {
+      order.push(['date', 'DESC']);
+      order.push(['tapTime', 'ASC']);
+    }
+
+    const { count, rows: attendanceRecords } = await Attendance.findAndCountAll({
+      where: attendanceWhere,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      order,
+      include: [
+        {
+          model: Student,
+          where: studentWhere,
+          required: true,
+          attributes: ['id', 'firstName', 'lastName', 'cardId']
+        },
+        {
+          model: Class,
+          attributes: ['id', 'name']
+        }
+      ],
+      distinct: true
+    });
+
+    // 🧹 Map to clean response
+    const formattedRecords = attendanceRecords.map(record => ({
+      id: record.id,
+      status: record.status,
+      date: record.date,
+      tapTime: record.tapTime,
+      student: {
+        id: record.Student?.id,
+        firstName: record.Student?.firstName,
+        lastName: record.Student?.lastName,
+        cardId: record.Student?.cardId
+      },
+      class: {
+        id: record.Class?.id,
+        name: record.Class?.name
+      }
+    }));
+
+    return res.status(200).json({
+      success: true,
+      message: 'Attendance records retrieved successfully',
+      data: {
+        total: count,
+        totalPages: Math.ceil(count / limit),
+        currentPage: parseInt(page),
+        records: formattedRecords
+      }
+    });
+    
+  } catch (error) {
+    console.error('Search attendance error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to search attendance records',
+      error: error.message
+    });
+  }
+};
+
+
 export const getClassAttendanceSummary = async (req, res) => {
   const { classId } = req.params;
   const { startDate, endDate } = req.query;
@@ -526,178 +625,6 @@ export const getClassAttendanceSummary = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to retrieve class attendance summary',
-      error: error.message
-    });
-  }
-};
-
-export const updateAttendanceStatus = async (req, res) => {
-  const { studentId } = req.params;
-  const { status } = req.body;
-  
-  // Validate status
-  const validStatuses = ['PRESENT', 'LATE', 'ABSENT'];
-  if (!validStatuses.includes(status.trim().toUpperCase())) {
-    return res.status(400).json({
-      success: false,
-      message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
-    });
-  }
-  
-  try {
-    // Get today's date
-    const today = new Date().toISOString().split('T')[0];
-    
-    // Find the student
-    const student = await Student.findOne({
-      where: { 
-
-           studentId: studentId 
-
-      }
-    });
-    // console.log('stuent:', student)
-
-    if (!student) {
-      return res.status(404).json({
-        success: false,
-        message: 'Student not found'
-      });
-    }
-    
-    // Find today's attendance record for this student
-    const attendanceRecord = await Attendance.findOne({
-      where: {
-        studentId: student.studentId,
-        date: today
-      }
-    });
-    
-    if(!attendanceRecord) { return res.status(400).json({ success: false, message: 'No attendance record found' })}
-    // Update the existing record
-    attendanceRecord.status = status.trim().toUpperCase();
-    await attendanceRecord.save();
-    
-    return res.status(200).json({
-      success: true,
-      message: 'Attendance status updated successfully',
-      data: attendanceRecord
-    });
-    
-  } catch (error) {
-    console.error('Update attendance status error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to update attendance status',
-      error: error.message
-    });
-  }
-};
-
-export const searchAttendance = async (req, res) => {
-  const { 
-    classId, 
-    status, 
-    date, 
-    startDate, 
-    endDate, 
-    studentName,
-    sortBy = 'date', 
-    sortOrder = 'DESC',
-    page = 1, 
-    limit = 10 
-  } = req.query;
-  
-  try {
-    const attendanceWhere = {};
-    if (classId) attendanceWhere.classId = classId;
-    if (status) attendanceWhere.status = status.toUpperCase();
-    if (date) {
-      attendanceWhere.date = date;
-    } else if (startDate || endDate) {
-      attendanceWhere.date = {};
-      if (startDate) attendanceWhere.date[Op.gte] = startDate;
-      if (endDate) attendanceWhere.date[Op.lte] = endDate;
-    }
-
-    const studentWhere = {};
-    if (studentName) {
-      studentWhere[Op.or] = [
-        { firstName: { [Op.iLike]: `%${studentName}%` } },
-        { lastName: { [Op.iLike]: `%${studentName}%` } }
-      ];
-    }
-
-    const offset = (page - 1) * limit;
-    
-    let order = [];
-    if (sortBy === 'status') {
-      order.push(['status', sortOrder]);
-    } else if (sortBy === 'date') {
-      order.push(['date', sortOrder]);
-      order.push(['tapTime', 'ASC']);
-    } else if (sortBy === 'studentName') {
-      order.push([{ model: Student, as: 'Student' }, 'lastName', sortOrder]);
-      order.push([{ model: Student, as: 'Student' }, 'firstName', sortOrder]);
-    } else {
-      order.push(['date', 'DESC']);
-      order.push(['tapTime', 'ASC']);
-    }
-
-    const { count, rows: attendanceRecords } = await Attendance.findAndCountAll({
-      where: attendanceWhere,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      order,
-      include: [
-        {
-          model: Student,
-          where: studentWhere,
-          required: true,
-          attributes: ['id', 'firstName', 'lastName', 'cardId']
-        },
-        {
-          model: Class,
-          attributes: ['id', 'name']
-        }
-      ],
-      distinct: true
-    });
-
-    // 🧹 Map to clean response
-    const formattedRecords = attendanceRecords.map(record => ({
-      id: record.id,
-      status: record.status,
-      date: record.date,
-      tapTime: record.tapTime,
-      student: {
-        id: record.Student?.id,
-        firstName: record.Student?.firstName,
-        lastName: record.Student?.lastName,
-        cardId: record.Student?.cardId
-      },
-      class: {
-        id: record.Class?.id,
-        name: record.Class?.name
-      }
-    }));
-
-    return res.status(200).json({
-      success: true,
-      message: 'Attendance records retrieved successfully',
-      data: {
-        total: count,
-        totalPages: Math.ceil(count / limit),
-        currentPage: parseInt(page),
-        records: formattedRecords
-      }
-    });
-    
-  } catch (error) {
-    console.error('Search attendance error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to search attendance records',
       error: error.message
     });
   }
