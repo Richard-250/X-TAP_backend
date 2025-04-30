@@ -3,7 +3,6 @@ import cors from 'cors';
 import allRouters from "./routes/index.js"
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-// import { scheduleAbsentMarking } from './jobs/recordAbsentees.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -25,6 +24,10 @@ app.use((err, req, res, next) => {
     });
   });
 
-  // scheduleAbsentMarking()
+  app.get('/', (req, res) => {
+    res.send('Server is working!');
+  });
+  
+
 
   export default app
