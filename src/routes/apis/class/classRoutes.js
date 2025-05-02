@@ -1,10 +1,16 @@
+
 import express from 'express';
-import * as classController from '../../../controllers/class.controller.js'
-import { authorizedRoles, isVerified, authenticated } from '../../../middleware/auth/auth.js';
+import * as classController from '../../../controllers/class.controller.js';
 
 const router = express.Router();
 
-router.get('/get-all-classes',  authenticated, isVerified, authorizedRoles('manager', 'accountant'), classController.getAllClassesWithStats);
-router.get('/single-class/:id',  authenticated, isVerified, authorizedRoles('manager', 'accountant'), classController.getSingleClassWithStats);
 
-export default router
+router.get('/', classController.getAllClasses);
+router.get('/stats', classController.getAllClassesWithStats);
+router.get('/:id', classController.getSingleClass);
+router.get('/:id/stats', classController.getSingleClassWithStats);
+router.post('/', classController.createClass);
+router.put('/:id', classController.updateClass);
+router.delete('/:id', classController.deleteClass);
+
+export default router;

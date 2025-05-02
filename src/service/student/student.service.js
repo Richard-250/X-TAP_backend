@@ -35,8 +35,7 @@ export const createStudent = async (studentData) => {
         addressLine1,
         addressLine2,
         classId,
-        courseId,
-        profilePhoto 
+        courseId
     } = studentData;
 
     if (!firstName || !lastName || !email || !phoneNumber || !dateOfBirth || !gender || !classId || !courseId) {
@@ -85,7 +84,7 @@ export const createStudent = async (studentData) => {
     });
 
     const studentId = generateStudentId(today, count + 1);
-    const studentProfilePhoto = profilePhoto || generateProfileAvatar(firstName, lastName, gender);
+    const studentProfilePhoto =  generateProfileAvatar(firstName, lastName, gender);
 
     return prisma.student.create({
         data: {

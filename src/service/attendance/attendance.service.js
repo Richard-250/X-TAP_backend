@@ -61,11 +61,11 @@ export async function markAttendance(studentId) {
   const closeTime = parseTimeString(config.closeTime);
   const currentTimeOnly = getTimeOnly(currentTime);
 
-  if (currentTimeOnly < openTime || currentTimeOnly > closeTime) {
-    const error = new Error('Attendance can only be marked during school hours');
-    error.statusCode = 400;
-    throw error;
-  }
+//   if (currentTimeOnly < openTime || currentTimeOnly > closeTime) {
+//     const error = new Error('Attendance can only be marked during school hours');
+//     error.statusCode = 400;
+//     throw error;
+//   }
 
   const existingAttendance = await prisma.attendance.findFirst({
     where: {

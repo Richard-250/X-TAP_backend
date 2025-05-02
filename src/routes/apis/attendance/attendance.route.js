@@ -28,7 +28,7 @@ router.get('/config', authenticated, getAttendanceConfig);
 
 router.put('/config',
     authenticated,
-    authorizedRoles(['admin', 'manager']),
+    authorizedRoles('admin', 'manager'),
     updateAttendanceConfig
 );
 
@@ -36,7 +36,7 @@ router.get('/calendar', authenticated, getSchoolCalendarEvents);
 
 router.post('/calendar',
     authenticated,
-    authorizedRoles(['admin', 'manager']),
+    authorizedRoles('admin', 'manager'),
     addSchoolCalendarEvent
 );
 
