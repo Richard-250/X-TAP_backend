@@ -55,6 +55,27 @@ export const getAllStudents = async (req, res) => {
     }
 };
 
+export const getSingleStudent = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const student = await studentService.getStudent(id);
+        
+        return res.status(200).json({
+            success: true,
+            message: 'Student retrieved successfully',
+            data: student
+        });
+    } catch (error) {
+        const status = error.status || 500;
+        
+        return res.status(status).json({
+            success: false,
+            message: error.message || 'An error occurred while fetching the student',
+            error: process.env.NODE_ENV === 'development' ? error.toString() : undefined
+        });
+    }
+};
+
 export const getStudentsByClass = async (req, res) => {
     try {
         const { classId } = req.params;
@@ -117,6 +138,68 @@ export const searchStudents = async (req, res) => {
         return res.status(status).json({
             success: false,
             message: error.message || 'An error occurred while searching for students',
+            error: process.env.NODE_ENV === 'development' ? error.toString() : undefined
+        });
+    }
+};
+
+export const updateStudent = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updatedStudent = await studentService.updateStudent(id, req.body);
+        
+        return res.status(200).json({
+            success: true,
+            message: 'Student updated successfully',
+            data: updatedStudent
+        });
+    } catch (error) {
+        const status = error.status || 500;
+        
+        return res.status(status).json({
+            success: false,
+            message: error.message || 'An error occurred while updating the student',
+            error: process.env.NODE_ENV === 'development' ? error.toString() : undefined
+        });
+    }
+};
+
+export const deleteStudent = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await studentService.deleteStudent(id);
+        
+        return res.status(200).json({
+            success: true,
+            message: 'Student deleted successfully'
+        });
+    } catch (error) {
+        const status = error.status || 500;
+        
+        return res.status(status).json({
+            success: false,
+            message: error.message || 'An error occurred while deleting the student',
+            error: process.env.NODE_ENV === 'development' ? error.toString() : undefined
+        });
+    }
+};
+
+export const getStudentCard = async (req, res) => {
+    try {
+        const { cardId } = req.params;
+        const student = await studentService.getStudentByCardId(cardId);
+        
+        return res.status(200).json({
+            success: true,
+            message: 'Student card information retrieved successfully',
+            data: student
+        });
+    } catch (error) {
+        const status = error.status || 500;
+        
+        return res.status(status).json({
+            success: false,
+            message: error.message || 'An error occurred while fetching the student card',
             error: process.env.NODE_ENV === 'development' ? error.toString() : undefined
         });
     }

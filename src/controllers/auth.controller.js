@@ -22,17 +22,27 @@ const sendResponse = (
 	return res.status(status).json(response);
 };
 
-export const login = asyncHandler(async (req, res) => {
-	const { email, password } = req.body;
-	if (!email || !password) {
-		return sendResponse(res, 400, false, "Email and password are required");
+export const login = async (req, res) => {
+	try {
+		const { email, password } = req.body;
+
+		if (!email || !password) {
+			return sendResponse(res, 400, false, "Email and password are required");
+		}
+
+		const result = await authService.authenticateUser(email, password);
+
+		return sendResponse(res, 200, true, "Login successful", {
+			token: result.token,
+			user: result.user,
+		});
+	} catch (error) {
+		if (error.status && error.message) {
+			return sendResponse(res, error.status, false, error.message);
+		  }
+		return sendResponse(res, 500, false, "Internal server error");
 	}
-	const result = await authService.authenticateUser(email, password);
-	return sendResponse(res, 200, true, "Login successful", {
-		token: result.token,
-		user: result.user,
-	});
-});
+};
 
 export const generateNfcToken = asyncHandler(async (req, res) => {
 	const { email, password } = req.body;

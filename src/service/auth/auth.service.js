@@ -146,49 +146,58 @@ export const resetUserPassword = async (user) => {
   };
 };
 
-// Authentication
+
+
+
+
+
+
 export const authenticateUser = async (email, password) => {
   const user = await findUserByEmail(email);
-  
+
   if (!user) {
-    throw createError(404, 'User not found');
+    const error = new Error('User not found');
+    error.status = 404;
+    throw error;
   }
-  
+
   if (!user.isVerified) {
-    throw createError(403, 'Account not verified. Please check your email for verification link.');
+    const error = new Error('Account not verified. Please check your email for verification link.');
+    error.status = 403;
+    throw error;
   }
-  
+
   const isPasswordValid = await validateUserPassword(password, user.password);
-  
+
   if (!isPasswordValid) {
-    throw createError(401, 'Invalid password');
+    const error = new Error('Invalid password');
+    error.status = 401;
+    throw error;
   }
-  
-  
+
   if (user.isFirstLogin) {
     try {
       await sendWelcomeEmail(user);
     } catch (error) {
       console.error('Failed to send welcome email:', error);
-      
     }
-    
+
     await prisma.user.update({
       where: { id: user.id },
-      data: { 
+      data: {
         isFirstLogin: false,
-        lastLogin: new Date()
-      }
+        lastLogin: new Date(),
+      },
     });
   } else {
     await prisma.user.update({
       where: { id: user.id },
-      data: { lastLogin: new Date() }
+      data: { lastLogin: new Date() },
     });
   }
-  
+
   const token = generateToken(user);
-  
+
   return {
     token,
     user: {
@@ -198,10 +207,14 @@ export const authenticateUser = async (email, password) => {
       email: user.email,
       role: user.role,
       title: user.title,
-      profilePhoto: user.profilePhoto
-    }
+      profilePhoto: user.profilePhoto,
+    },
   };
 };
+
+
+
+
 
 // NFC token-related functions
 export const generateNfcLoginToken = async (email, password) => {

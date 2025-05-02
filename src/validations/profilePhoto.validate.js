@@ -1,6 +1,6 @@
 import Joi from "joi";
 
-// Supported image MIME types
+
 const ALLOWED_MIME_TYPES = [
   'image/jpeg',
   'image/png',
@@ -38,7 +38,7 @@ const profilePhotoSchema = Joi.object({
 }).unknown(false); // Allow other fields in the request
 
 const validateProfilePhoto = (req, res, next) => {
-  // For multipart/form-data, we validate req.file (single) or req.files (multiple)
+   console.log('Request file:', req.file, req.files);
   const fileToValidate = req.file || (req.files && req.files.photo);
   
   const { error } = profilePhotoSchema.validate(

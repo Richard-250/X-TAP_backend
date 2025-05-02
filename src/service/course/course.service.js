@@ -1,143 +1,82 @@
-import db from '../../database/models/index.js';
-const { Course } = db;
+import { PrismaClient } from '@prisma/client';
 
-// Get all courses with student statistics
+const prisma = new PrismaClient();
+
 export const getAllCourses = async (queryParams) => {
     const {
         page = 1,
         pageSize = 10,
         sortBy = 'name',
-        sortOrder = 'ASC',
+        sortOrder = 'asc',
         name,
     } = queryParams;
 
-    const offset = (page - 1) * pageSize;
+    const skip = (Number.parseInt(page) - 1) * Number.parseInt(pageSize);
+    const take = Number.parseInt(pageSize);
 
-    // Build where clause
     const where = {};
-    if (name) where.name = { [db.Sequelize.Op.iLike]: `%${name}%` };
+    if (name) where.name = { contains: name, mode: 'insensitive' };
 
-    // Base attributes
-    const attributes = [
-        'id',
-        'name',
-        'description',
-        'createdAt',
-        'updatedAt'
-    ];
+    const [courses, totalCount] = await Promise.all([
+        prisma.course.findMany({
+            where,
+            include: {
+                students: {
+                    select: {
+                        id: true,
+                        gender: true
+                    }
+                }
+            },
+            orderBy: { [sortBy]: sortOrder.toLowerCase() },
+            skip,
+            take
+        }),
+        prisma.course.count({ where })
+    ]);
 
-    const options = {
-        attributes: [
-            ...attributes,
-            [
-              db.Sequelize.literal(`(
-                SELECT COUNT(*)
-                FROM "students" AS "student"
-                WHERE "student"."courseId" = "Course"."id"
-              )`),
-              'totalStudents'
-            ],
-            [
-              db.Sequelize.literal(`(
-                SELECT COUNT(*)
-                FROM "students" AS "student"
-                WHERE "student"."courseId" = "Course"."id"
-                AND "student"."gender" = 'male'
-              )`),
-              'maleStudents'
-            ],
-            [
-              db.Sequelize.literal(`(
-                SELECT COUNT(*)
-                FROM "students" AS "student"
-                WHERE "student"."courseId" = "Course"."id"
-                AND "student"."gender" = 'female'
-              )`),
-              'femaleStudents'
-            ]
-          ],              
-        where,
-        order: [[sortBy, sortOrder]],
-        limit: parseInt(pageSize),
-        offset: offset,
-        subQuery: false
-    };
+    const formattedCourses = courses.map(course => {
+        const totalStudents = course.students.length;
+        const maleStudents = course.students.filter(student => student.gender === 'male').length;
+        const femaleStudents = course.students.filter(student => student.gender === 'female').length;
 
-    const courses = await Course.findAll(options);
-
-    // Get total count for pagination
-    const totalCount = await Course.count({ where });
-
-    // Format the response
-    const formattedCourses = courses.map(course => ({
-        id: course.id,
-        name: course.name,
-        description: course.description,
-        createdAt: course.createdAt,
-        updatedAt: course.updatedAt,
-        studentStats: {
-            total: course.getDataValue('totalStudents') || 0,
-            male: course.getDataValue('maleStudents') || 0,
-            female: course.getDataValue('femaleStudents') || 0
-        }
-    }));
+        return {
+            id: course.id,
+            name: course.name,
+            description: course.description,
+            createdAt: course.createdAt,
+            updatedAt: course.updatedAt,
+            studentStats: {
+                total: totalStudents,
+                male: maleStudents,
+                female: femaleStudents
+            }
+        };
+    });
 
     return {
         courses: formattedCourses,
         pagination: {
-            currentPage: parseInt(page),
-            pageSize: parseInt(pageSize),
+            currentPage: Number.parseInt(page),
+            pageSize: Number.parseInt(pageSize),
             totalItems: totalCount,
-            totalPages: Math.ceil(totalCount / pageSize)
+            totalPages: Math.ceil(totalCount / Number.parseInt(pageSize))
         }
     };
 };
 
-// Get a single course with student statistics
-export const getCourse = async (courseId) => {
-    // Base attributes
-    const attributes = [
-        'id',
-        'name',
-        'description',
-        'createdAt',
-        'updatedAt'
-    ];
-
-    const options = {
-        attributes: [
-            ...attributes,
-            [
-              db.Sequelize.literal(`(
-                SELECT COUNT(*)
-                FROM "students" AS "student"
-                WHERE "student"."courseId" = "Course"."id"
-              )`),
-              'totalStudents'
-            ],
-            [
-              db.Sequelize.literal(`(
-                SELECT COUNT(*)
-                FROM "students" AS "student"
-                WHERE "student"."courseId" = "Course"."id"
-                AND "student"."gender" = 'male'
-              )`),
-              'maleStudents'
-            ],
-            [
-              db.Sequelize.literal(`(
-                SELECT COUNT(*)
-                FROM "students" AS "student"
-                WHERE "student"."courseId" = "Course"."id"
-                AND "student"."gender" = 'female'
-              )`),
-              'femaleStudents'
-            ]
-          ],
-        where: { id: courseId }
-    };
-
-    const course = await Course.findOne(options);
+export const getCourse = async (id) => {
+    const course = await prisma.course.findUnique({
+        where: { id },
+        include: {
+            students: {
+                select: {
+                    id: true,
+                    gender: true
+                }
+            }
+        }
+    });
 
     if (!course) {
         throw {
@@ -146,7 +85,10 @@ export const getCourse = async (courseId) => {
         };
     }
 
-    // Format the response
+    const totalStudents = course.students.length;
+    const maleStudents = course.students.filter(student => student.gender === 'male').length;
+    const femaleStudents = course.students.filter(student => student.gender === 'female').length;
+
     return {
         id: course.id,
         name: course.name,
@@ -154,9 +96,106 @@ export const getCourse = async (courseId) => {
         createdAt: course.createdAt,
         updatedAt: course.updatedAt,
         studentStats: {
-            total: course.getDataValue('totalStudents') || 0,
-            male: course.getDataValue('maleStudents') || 0,
-            female: course.getDataValue('femaleStudents') || 0
+            total: totalStudents,
+            male: maleStudents,
+            female: femaleStudents
         }
     };
+};
+
+export const createCourse = async (courseData) => {
+    const { name, description } = courseData;
+
+    if (!name) {
+        throw {
+            status: 400,
+            message: 'Course name is required',
+            requiredFields: ['name']
+        };
+    }
+
+    const existingCourse = await prisma.course.findFirst({
+        where: { name }
+    });
+
+    if (existingCourse) {
+        throw {
+            status: 409,
+            message: 'A course with this name already exists',
+            suggestion: 'Please choose a different name'
+        };
+    }
+
+    return prisma.course.create({
+        data: {
+            name,
+            description
+        }
+    });
+};
+
+export const updateCourse = async (id, courseData) => {
+    const { name, description } = courseData;
+
+    const courseExists = await prisma.course.findUnique({
+        where: { id }
+    });
+
+    if (!courseExists) {
+        throw {
+            status: 404,
+            message: 'Course not found'
+        };
+    }
+
+    if (name && name !== courseExists.name) {
+        const nameExists = await prisma.course.findFirst({
+            where: {
+                name,
+                id: { not: id }
+            }
+        });
+
+        if (nameExists) {
+            throw {
+                status: 409,
+                message: 'A course with this name already exists',
+                suggestion: 'Please choose a different name'
+            };
+        }
+    }
+
+    return prisma.course.update({
+        where: { id },
+        data: {
+            name,
+            description
+        }
+    });
+};
+
+export const deleteCourse = async (id) => {
+    const courseExists = await prisma.course.findUnique({
+        where: { id },
+        include: { students: { select: { id: true } } }
+    });
+
+    if (!courseExists) {
+        throw {
+            status: 404,
+            message: 'Course not found'
+        };
+    }
+
+    if (courseExists.students.length > 0) {
+        throw {
+            status: 400,
+            message: 'Cannot delete course with enrolled students',
+            suggestion: 'Transfer students to another course before deletion'
+        };
+    }
+
+    return prisma.course.delete({
+        where: { id }
+    });
 };

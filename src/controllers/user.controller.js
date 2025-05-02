@@ -1,5 +1,5 @@
-import { imageUploader } from '../service/user/upload.service.js';
 import profilePhotoService from '../service/user/profilePhoto.service.js';
+import imageUploader, { createImageUploader } from '../service/user/upload.service.js';
 import * as userService from '../service/user/user.service.js';
 
 export const createManager = async (req, res) => {
@@ -323,6 +323,7 @@ export const updateUserRole = async (req, res) => {
       });
     }
     
+    
     const result = await userService.updateUserRole(userId, newRole);
     
     if (!result) {
@@ -332,8 +333,7 @@ export const updateUserRole = async (req, res) => {
       });
     }
     
-    console.log(`Manager ${req.user.id} changed user ${userId} role from ${result.roleChange.previousRole} to ${newRole}`);
-    
+
     return res.status(200).json({
       success: true,
       message: 'User role updated successfully',
@@ -341,8 +341,7 @@ export const updateUserRole = async (req, res) => {
       roleChange: result.roleChange
     });
   } catch (error) {
-    console.error('Error updating user role:', error);
-    
+  
     if (error.name === 'PrismaClientValidationError') {
       return res.status(400).json({
         success: false,
@@ -369,7 +368,6 @@ export const disableUserAccount = async (req, res) => {
       });
     }
     
-    // Prevent managers from disabling admin/manager accounts
     const userToDisable = await userService.findUserById(userId);
     if (!userToDisable) {
       return res.status(404).json({
@@ -436,9 +434,25 @@ export const disableUserAccount = async (req, res) => {
   }
 };
 
+
+
+
+const profilePhotoUploader = createImageUploader({
+  maxSize: 2 * 1024 * 1024, // 2MB limit for profile photos
+  folder: 'profile-photos',
+  fieldName: 'profilePhoto', // This must match the field name in your form-data
+  transformation: {
+    width: 400,
+    height: 400,
+    crop: 'fill',
+    gravity: 'face'
+  }
+});
+
 export const profilePhotoController = {
   uploadProfilePhoto: [
-    imageUploader.customHandler('single'),
+    
+    profilePhotoUploader.single(),
     
     async (req, res) => {
       try {
@@ -452,7 +466,6 @@ export const profilePhotoController = {
           });
         }
 
-        // Find the user by ID
         const user = await userService.findUserById(userId);
         if (!user) {
           return res.status(404).json({
@@ -461,7 +474,6 @@ export const profilePhotoController = {
           });
         }
 
-        // Update profile photo using service
         const updatedUser = await profilePhotoService.updateProfilePhoto(user, file);
 
         return res.status(200).json({
@@ -486,7 +498,6 @@ export const profilePhotoController = {
     try {
       const userId = req.user.id;
       
-      // Find the user by ID
       const user = await userService.findUserById(userId);
       if (!user) {
         return res.status(404).json({
@@ -495,7 +506,6 @@ export const profilePhotoController = {
         });
       }
 
-      // Delete profile photo and generate avatar using service
       const updatedUser = await profilePhotoService.deleteProfilePhoto(user);
 
       return res.status(200).json({
@@ -515,3 +525,4 @@ export const profilePhotoController = {
     }
   }
 };
+

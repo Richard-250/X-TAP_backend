@@ -3,7 +3,6 @@ import { generateStudentId } from '../../utils/generateStudentId.js';
 
 const prisma = new PrismaClient();
 
-// Function to generate profile avatar based on name and gender
 const generateProfileAvatar = (firstName, lastName, gender) => {
     const seed = `${firstName}+${lastName}`;
   
@@ -17,7 +16,6 @@ const generateProfileAvatar = (firstName, lastName, gender) => {
     }
 };
 
-// Student registration service
 export const createStudent = async (studentData) => {
     const {
         firstName,
@@ -41,7 +39,6 @@ export const createStudent = async (studentData) => {
         profilePhoto 
     } = studentData;
 
-    // Validate required fields
     if (!firstName || !lastName || !email || !phoneNumber || !dateOfBirth || !gender || !classId || !courseId) {
         throw {
             status: 400,
@@ -50,7 +47,6 @@ export const createStudent = async (studentData) => {
         };
     }
 
-    // Check if student email already exists
     const existingStudent = await prisma.student.findUnique({ where: { email } });
     if (existingStudent) {
         throw {
@@ -60,7 +56,6 @@ export const createStudent = async (studentData) => {
         };
     }
 
-    // Validate if classId and courseId exist
     const [classExists, courseExists] = await Promise.all([
         prisma.class.findUnique({ where: { id: classId } }),
         prisma.course.findUnique({ where: { id: courseId } })
@@ -80,7 +75,6 @@ export const createStudent = async (studentData) => {
         };
     }
 
-    // Generate a unique student ID
     const today = new Date();
     const count = await prisma.student.count({
         where: {
@@ -91,19 +85,16 @@ export const createStudent = async (studentData) => {
     });
 
     const studentId = generateStudentId(today, count + 1);
-
-    // Generate default avatar if profilePhoto is not provided
     const studentProfilePhoto = profilePhoto || generateProfileAvatar(firstName, lastName, gender);
 
-    // Create the student
-    const newStudent = await prisma.student.create({
+    return prisma.student.create({
         data: {
             firstName,
             lastName,
             email,
             profilePhoto: studentProfilePhoto,
             phoneNumber,
-            dateOfBirth,
+            dateOfBirth: new Date(dateOfBirth),
             gender,
             country,
             city,
@@ -121,18 +112,14 @@ export const createStudent = async (studentData) => {
             enrollmentDate: today
         }
     });
-
-    return newStudent;
 };
 
-// Get all students with filtering, sorting, and pagination
 export const getStudents = async (queryParams) => {
     const {
         page = 1,
         pageSize = 10,
         sortBy = 'createdAt',
         sortOrder = 'desc',
-        // Address filters
         country,
         city,
         province,
@@ -141,19 +128,16 @@ export const getStudents = async (queryParams) => {
         village,
         road,
         postalCode,
-        // Student filters
         gender,
         classId,
         courseId
     } = queryParams;
 
-    // Calculate pagination offset
-    const offset = (Number.parseInt(page) - 1) * Number.parseInt(pageSize);
+    const skip = (Number.parseInt(page) - 1) * Number.parseInt(pageSize);
+    const take = Number.parseInt(pageSize);
 
-    // Build the where clause for filtering
     const where = {};
 
-    // Address filters
     if (country) where.country = country;
     if (city) where.city = city;
     if (province) where.province = province;
@@ -162,26 +146,23 @@ export const getStudents = async (queryParams) => {
     if (village) where.village = village;
     if (road) where.road = road;
     if (postalCode) where.postalCode = postalCode;
-
-    // Student filters
     if (gender) where.gender = gender;
     if (classId) where.classId = classId;
     if (courseId) where.courseId = courseId;
 
-    // Get total count for pagination info
-    const totalCount = await prisma.student.count({ where });
-
-    // Fetch students with filters, sorting, and pagination
-    const students = await prisma.student.findMany({
-        where,
-        orderBy: { [sortBy]: sortOrder },
-        skip: offset,
-        take: Number.parseInt(pageSize),
-        include: {
-            class: { select: { id: true, name: true } },
-            course: { select: { id: true, name: true } }
-        }
-    });
+    const [students, totalCount] = await Promise.all([
+        prisma.student.findMany({
+            where,
+            orderBy: { [sortBy]: sortOrder.toLowerCase() },
+            skip,
+            take,
+            include: {
+                class: { select: { id: true, name: true } },
+                course: { select: { id: true, name: true } }
+            }
+        }),
+        prisma.student.count({ where })
+    ]);
 
     return {
         students,
@@ -189,19 +170,36 @@ export const getStudents = async (queryParams) => {
             currentPage: Number.parseInt(page),
             pageSize: Number.parseInt(pageSize),
             totalItems: totalCount,
-            totalPages: Math.ceil(totalCount / pageSize)
+            totalPages: Math.ceil(totalCount / Number.parseInt(pageSize))
         }
     };
 };
 
-// Get students by class ID
+export const getStudent = async (id) => {
+    const student = await prisma.student.findUnique({
+        where: { id },
+        include: {
+            class: { select: { id: true, name: true } },
+            course: { select: { id: true, name: true } }
+        }
+    });
+
+    if (!student) {
+        throw {
+            status: 404,
+            message: 'Student not found'
+        };
+    }
+
+    return student;
+};
+
 export const getStudentsByClassId = async (classId, queryParams) => {
     const {
         page = 1,
         pageSize = 10,
         sortBy = 'firstName',
         sortOrder = 'asc',
-        // Address filters
         country,
         city,
         province,
@@ -210,11 +208,9 @@ export const getStudentsByClassId = async (classId, queryParams) => {
         village,
         road,
         postalCode,
-        // Student filters
         gender
     } = queryParams;
 
-    // Validate classId
     if (!classId) {
         throw {
             status: 400,
@@ -222,7 +218,6 @@ export const getStudentsByClassId = async (classId, queryParams) => {
         };
     }
 
-    // Check if class exists
     const classExists = await prisma.class.findUnique({ where: { id: classId } });
     if (!classExists) {
         throw {
@@ -231,10 +226,11 @@ export const getStudentsByClassId = async (classId, queryParams) => {
         };
     }
 
-    const offset = (Number.parseInt(page) - 1) * Number.parseInt(pageSize);
+    const skip = (Number.parseInt(page) - 1) * Number.parseInt(pageSize);
+    const take = Number.parseInt(pageSize);
+    
     const where = { classId };
 
-    // Apply address filters if provided
     if (country) where.country = country;
     if (city) where.city = city;
     if (province) where.province = province;
@@ -243,24 +239,21 @@ export const getStudentsByClassId = async (classId, queryParams) => {
     if (village) where.village = village;
     if (road) where.road = road;
     if (postalCode) where.postalCode = postalCode;
-
-    // Apply student filters if provided
     if (gender) where.gender = gender;
 
-    // Get total count for pagination
-    const totalCount = await prisma.student.count({ where });
-
-    // Fetch students in the same class
-    const students = await prisma.student.findMany({
-        where,
-        orderBy: { [sortBy]: sortOrder },
-        skip: offset,
-        take: Number.parseInt(pageSize),
-        include: {
-            class: { select: { id: true, name: true } },
-            course: { select: { id: true, name: true } }
-        }
-    });
+    const [students, totalCount] = await Promise.all([
+        prisma.student.findMany({
+            where,
+            orderBy: { [sortBy]: sortOrder.toLowerCase() },
+            skip,
+            take,
+            include: {
+                class: { select: { id: true, name: true } },
+                course: { select: { id: true, name: true } }
+            }
+        }),
+        prisma.student.count({ where })
+    ]);
 
     return {
         students,
@@ -272,19 +265,17 @@ export const getStudentsByClassId = async (classId, queryParams) => {
             currentPage: Number.parseInt(page),
             pageSize: Number.parseInt(pageSize),
             totalItems: totalCount,
-            totalPages: Math.ceil(totalCount / pageSize)
+            totalPages: Math.ceil(totalCount / Number.parseInt(pageSize))
         }
     };
 };
 
-// Get students by course ID
 export const getStudentsByCourseId = async (courseId, queryParams) => {
     const {
         page = 1,
         pageSize = 10,
         sortBy = 'firstName',
         sortOrder = 'asc',
-        // Address filters
         country,
         city,
         province,
@@ -293,12 +284,10 @@ export const getStudentsByCourseId = async (courseId, queryParams) => {
         village,
         road,
         postalCode,
-        // Student filters
         gender,
         classId
     } = queryParams;
 
-    // Validate courseId
     if (!courseId) {
         throw {
             status: 400,
@@ -306,7 +295,6 @@ export const getStudentsByCourseId = async (courseId, queryParams) => {
         };
     }
 
-    // Check if course exists
     const courseExists = await prisma.course.findUnique({ where: { id: courseId } });
     if (!courseExists) {
         throw {
@@ -315,10 +303,11 @@ export const getStudentsByCourseId = async (courseId, queryParams) => {
         };
     }
 
-    const offset = (Number.parseInt(page) - 1) * Number.parseInt(pageSize);
+    const skip = (Number.parseInt(page) - 1) * Number.parseInt(pageSize);
+    const take = Number.parseInt(pageSize);
+    
     const where = { courseId };
 
-    // Apply address filters if provided
     if (country) where.country = country;
     if (city) where.city = city;
     if (province) where.province = province;
@@ -327,25 +316,22 @@ export const getStudentsByCourseId = async (courseId, queryParams) => {
     if (village) where.village = village;
     if (road) where.road = road;
     if (postalCode) where.postalCode = postalCode;
-
-    // Apply student filters if provided
     if (gender) where.gender = gender;
     if (classId) where.classId = classId;
 
-    // Get total count for pagination
-    const totalCount = await prisma.student.count({ where });
-
-    // Fetch students taking the same course
-    const students = await prisma.student.findMany({
-        where,
-        orderBy: { [sortBy]: sortOrder },
-        skip: offset,
-        take: Number.parseInt(pageSize),
-        include: {
-            class: { select: { id: true, name: true } },
-            course: { select: { id: true, name: true } }
-        }
-    });
+    const [students, totalCount] = await Promise.all([
+        prisma.student.findMany({
+            where,
+            orderBy: { [sortBy]: sortOrder.toLowerCase() },
+            skip,
+            take,
+            include: {
+                class: { select: { id: true, name: true } },
+                course: { select: { id: true, name: true } }
+            }
+        }),
+        prisma.student.count({ where })
+    ]);
 
     return {
         students,
@@ -357,12 +343,11 @@ export const getStudentsByCourseId = async (courseId, queryParams) => {
             currentPage: Number.parseInt(page),
             pageSize: Number.parseInt(pageSize),
             totalItems: totalCount,
-            totalPages: Math.ceil(totalCount / pageSize)
+            totalPages: Math.ceil(totalCount / Number.parseInt(pageSize))
         }
     };
 };
 
-// Search students
 export const searchStudents = async (queryParams) => {
     const {
         search = '',
@@ -372,8 +357,6 @@ export const searchStudents = async (queryParams) => {
         sortOrder = 'desc'
     } = queryParams;
 
-    const offset = (Number.parseInt(page) - 1) * Number.parseInt(pageSize);
-
     if (!search.trim()) {
         throw {
             status: 400,
@@ -381,37 +364,193 @@ export const searchStudents = async (queryParams) => {
         };
     }
 
-    const searchTerm = `%${search.trim()}%`;
-
+    const skip = (Number.parseInt(page) - 1) * Number.parseInt(pageSize);
+    const take = Number.parseInt(pageSize);
+    
     const where = {
         OR: [
-            { firstName: { contains: searchTerm, mode: 'insensitive' } },
-            { lastName: { contains: searchTerm, mode: 'insensitive' } },
-            { email: { contains: searchTerm, mode: 'insensitive' } },
-            { phoneNumber: { contains: searchTerm, mode: 'insensitive' } }
+            { firstName: { contains: search, mode: 'insensitive' } },
+            { lastName: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+            { phoneNumber: { contains: search, mode: 'insensitive' } },
+            { studentId: { contains: search, mode: 'insensitive' } }
         ]
     };
 
-    const totalItems = await prisma.student.count({ where });
-
-    const students = await prisma.student.findMany({
-        where,
-        orderBy: { [sortBy]: sortOrder },
-        skip: offset,
-        take: Number.parseInt(pageSize),
-        include: {
-            class: { select: { id: true, name: true } },
-            course: { select: { id: true, name: true } }
-        }
-    });
+    const [students, totalCount] = await Promise.all([
+        prisma.student.findMany({
+            where,
+            orderBy: { [sortBy]: sortOrder.toLowerCase() },
+            skip,
+            take,
+            include: {
+                class: { select: { id: true, name: true } },
+                course: { select: { id: true, name: true } }
+            }
+        }),
+        prisma.student.count({ where })
+    ]);
 
     return {
         students,
         pagination: {
             currentPage: Number.parseInt(page),
             pageSize: Number.parseInt(pageSize),
-            totalItems,
-            totalPages: Math.ceil(totalItems / pageSize)
+            totalItems: totalCount,
+            totalPages: Math.ceil(totalCount / Number.parseInt(pageSize))
         }
     };
+};
+
+export const updateStudent = async (id, studentData) => {
+    const student = await prisma.student.findUnique({
+        where: { id }
+    });
+
+    if (!student) {
+        throw {
+            status: 404,
+            message: 'Student not found'
+        };
+    }
+
+    const {
+        firstName,
+        lastName,
+        email,
+        phoneNumber,
+        dateOfBirth,
+        gender,
+        country,
+        city,
+        province,
+        district,
+        sector,
+        village,
+        road,
+        postalCode,
+        addressLine1,
+        addressLine2,
+        classId,
+        courseId,
+        profilePhoto,
+        isActive
+    } = studentData;
+
+    if (email && email !== student.email) {
+        const emailExists = await prisma.student.findFirst({
+            where: {
+                email,
+                id: { not: id }
+            }
+        });
+
+        if (emailExists) {
+            throw {
+                status: 409,
+                message: 'Email already exists',
+                suggestion: 'Please use a different email address'
+            };
+        }
+    }
+
+    if (classId) {
+        const classExists = await prisma.class.findUnique({ where: { id: classId } });
+        if (!classExists) {
+            throw {
+                status: 404,
+                message: 'Class not found'
+            };
+        }
+    }
+
+    if (courseId) {
+        const courseExists = await prisma.course.findUnique({ where: { id: courseId } });
+        if (!courseExists) {
+            throw {
+                status: 404,
+                message: 'Course not found'
+            };
+        }
+    }
+
+    const updatedData = {
+        firstName,
+        lastName,
+        email,
+        phoneNumber,
+        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
+        gender,
+        country,
+        city,
+        province,
+        district,
+        sector,
+        village,
+        road,
+        postalCode,
+        addressLine1,
+        addressLine2,
+        classId,
+        courseId,
+        isActive
+    };
+
+    if (profilePhoto) {
+        updatedData.profilePhoto = profilePhoto;
+    } else if (firstName && lastName && gender && !student.profilePhoto) {
+        updatedData.profilePhoto = generateProfileAvatar(firstName, lastName, gender);
+    }
+
+    return prisma.student.update({
+        where: { id },
+        data: updatedData,
+        include: {
+            class: { select: { id: true, name: true } },
+            course: { select: { id: true, name: true } }
+        }
+    });
+};
+
+export const deleteStudent = async (id) => {
+    const student = await prisma.student.findUnique({
+        where: { id },
+        include: { attendances: { select: { id: true } } }
+    });
+
+    if (!student) {
+        throw {
+            status: 404,
+            message: 'Student not found'
+        };
+    }
+
+    if (student.attendances.length > 0) {
+        await prisma.attendance.deleteMany({
+            where: { studentId: student.studentId }
+        });
+    }
+
+    return prisma.student.delete({
+        where: { id }
+    });
+};
+
+export const getStudentByCardId = async (cardId) => {
+    const student = await prisma.student.findUnique({
+        where: { cardId },
+        include: {
+            class: { select: { id: true, name: true } },
+            course: { select: { id: true, name: true } }
+        }
+    });
+
+    if (!student) {
+        throw {
+            status: 404,
+            message: 'Student card not found'
+        };
+    }
+
+    return student;
 };
