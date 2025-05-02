@@ -1,15 +1,14 @@
 
-// -- utils/password.js --
-// Changed to ES Module format
+
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
 export const generatePassword = () => {
-    // Always start with 'wm'
+ 
     let password = 'WM';
     
-    // Add 4 random digits
+  
     for (let i = 0; i < 4; i++) {
       password += Math.floor(Math.random() * 10);
     }
@@ -26,7 +25,7 @@ export const generatePassword = () => {
       process.env.JWT_SECRET , 
       {
         expiresIn: process.env.JWT_EXPIRES_IN || '5h', 
-        // algorithm: 'HS256' 
+  
       }
     );
   };
@@ -40,7 +39,7 @@ export const generatePassword = () => {
       process.env.JWT_SECRET, 
       {
         expiresIn: expiresIn || process.env.JWT_EXPIRES_IN || '5h',
-        // algorithm: 'HS256' 
+    
       }
     );
   };

@@ -1,16 +1,14 @@
 {
-  "name": "itunda-system-backend",
+  "name": "xtap-backend",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
     "start": "node src/server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon src/server.js",
-    "migrate": "sequelize-cli db:migrate",
-    "migrate:undo": "sequelize-cli db:migrate:undo",
-    "migrate:undo:all": "sequelize-cli db:migrate:undo:all",
-    "seed": "sequelize-cli db:seed:all",
-    "seed:undo": "sequelize-cli db:seed:undo:all"
+    "dev": "nodemon src/server.js"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   },
   "keywords": [],
   "author": "",
@@ -21,12 +19,17 @@
     "npm": ">=7.0.0"
   },
   "dependencies": {
+    "@prisma/client": "^6.7.0",
+    "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.2",
     "cloudinary": "^1.37.0",
     "cors": "^2.8.5",
+    "crypto": "^1.0.1",
     "dotenv": "^16.5.0",
     "ejs": "^3.1.10",
     "express": "^5.1.0",
+    "express-async-handler": "^1.2.0",
+    "fs": "^0.0.1-security",
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.2",
@@ -34,14 +37,18 @@
     "node-cron": "^3.0.3",
     "nodemailer": "^6.10.1",
     "nodemon": "^3.1.9",
+    "path": "^0.12.7",
     "pg": "^8.14.1",
     "pg-hstore": "^2.3.4",
     "sequelize": "^6.37.7",
+    "url": "^0.11.4",
+    "util": "^0.12.5",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
     "date-fns": "^4.1.0",
     "faker": "^5.5.3",
+    "prisma": "^6.7.0",
     "sequelize-cli": "^6.6.2"
   }
 }

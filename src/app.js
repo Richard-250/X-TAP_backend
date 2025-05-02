@@ -28,6 +28,8 @@ app.use((err, req, res, next) => {
     res.send('Server is working!');
   });
   
-
+  app.get('/testing', (req, res) => {
+    res.send('Server is working in testing mode!');
+  });
 
   export default app

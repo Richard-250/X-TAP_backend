@@ -2,13 +2,13 @@ import { v2 as cloudinary } from 'cloudinary';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import 'dotenv/config';
 
-// Ensure required environment variables are set
-const requiredEnvVars = ['CLOUD_NAME', 'CLOUD_API_KEY', 'CLOUD_API_KEY_SECRET'];
-const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+// // Ensure required environment variables are set
+// const requiredEnvVars = ['CLOUD_NAME', 'CLOUD_API_KEY', 'CLOUD_API_KEY_SECRET'];
+// const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
 
-if (missingVars.length > 0) {
-  throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
-}
+// if (missingVars.length > 0) {
+//   throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+// }
 
 cloudinary.config({
   cloud_name: process.env.CLOUD_NAME,

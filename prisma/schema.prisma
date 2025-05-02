@@ -1,0 +1,272 @@
+// This is your Prisma schema file
+// Learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["extendedWhereUnique"]
+}
+
+
+
+datasource db {
+  provider = "postgresql" // You can change this to mysql, sqlite, sqlserver, mongodb, or cockroachdb
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String    @id @default(uuid())
+  firstName           String
+  lastName            String
+  email               String    @unique
+  phoneNumber         String?
+  profilePhoto        String?
+  password            String?   // Will be hashed
+  passwordChangedAt   DateTime? // Tracks when the password was last changed
+  role                Role      @default(mentor)
+  verificationToken   String?
+  verificationExpires DateTime?
+  isVerified          Boolean   @default(false)
+  passwordResetToken  String?
+  passwordResetExpires DateTime?
+  createdBy           String?
+  createdUser         User?     @relation("UserCreatedBy", fields: [createdBy], references: [id])
+  usersCreated        User[]    @relation("UserCreatedBy")
+  lastLogin           DateTime?
+  dateOfBirth         DateTime?
+  gender              Gender?
+  bio                 String?
+  isEnabled           Boolean   @default(true)
+  disabledAt          DateTime?
+  isFirstLogin        Boolean   @default(true)
+  isPublic            Boolean   @default(true)
+  
+  // Address fields
+  country             String?
+  city                String?
+  province            String?
+  district            String?
+  sector              String?
+  village             String?
+  road                String?
+  postalCode          String?
+  addressLine1        String?
+  addressLine2        String?
+  
+  // Professional information
+  title               String?   // Professional title or designation of the user
+  
+  // NFC Authentication
+  nfcLoginToken       String?   // Token used for NFC-based authentication
+  nfcLoginTokenExpires DateTime? // Expiration date for the NFC login token
+  
+  // Timestamps
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  
+  @@map("users")
+}
+
+model Student {
+  id              String        @id @default(uuid())
+  studentId       String        @unique @db.VarChar(12) // Format:  YYYYMMDD + sequence number (e.g., S202400001)
+  cardId          String        @unique @default(uuid())
+  isActive        Boolean       @default(true)
+  firstName       String
+  lastName        String
+  email           String?       @unique
+  profilePhoto    String?
+  phoneNumber     String?
+  dateOfBirth     DateTime?
+  gender          StudentGender?
+  
+  // Address fields
+  country         String?
+  city            String?
+  province        String?
+  district        String?
+  sector          String?
+  village         String?
+  road            String?
+  postalCode      String?
+  addressLine1    String?
+  addressLine2    String?
+  
+  // Relationships
+  classId         String
+  class           Class         @relation(fields: [classId], references: [id])
+  courseId        String
+  course          Course        @relation(fields: [courseId], references: [id])
+  attendances     Attendance[]
+  
+  // Enrollment information
+  enrollmentDate  DateTime      @default(now())
+  
+  // Timestamps
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  // Virtual field in Mongoose (will need to be calculated in application code)
+  // age - calculated from dateOfBirth
+  // fullName - concatenation of firstName and lastName
+
+  @@map("students")
+}
+
+model Course {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  students    Student[]
+  
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("courses")
+}
+
+model Class {
+  id          String       @id @default(uuid())
+  name        String       @unique
+  level       String?
+  section     String?
+  description String?
+  icon        String       @default("computer")
+  color       String       @default("blue")
+  bgColor     String?
+  students    Student[]
+  attendances Attendance[]
+  
+  // Timestamps
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([level])
+  @@index([section])
+  @@index([level, section])
+  @@index([color])
+  @@index([icon])
+  @@map("classes")
+}
+
+model Attendance {
+  id          String           @id @default(uuid())
+  cardId      String           // Card ID used for tracking
+  studentId   String           // Uses the student's unique number
+  student     Student          @relation(fields: [studentId], references: [studentId])
+  classId     String
+  class       Class            @relation(fields: [classId], references: [id])
+  date        DateTime         @default(now()) @db.Date
+  status      AttendanceStatus @default(absent)
+  tapTime     DateTime?        // Time when card was tapped
+  reason      String?          // For absences or late arrivals
+  approvedBy  String?          // For excused absences
+  notes       String?          // Any additional information
+  
+  // Timestamps
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([studentId, date], name: "one_attendance_per_student_per_day")
+  @@index([status])
+  @@index([date])
+  @@map("attendances")
+}
+
+model GlobalAttendanceConfig {
+  id            String   @id @default(uuid())
+  openTime      String   @default("05:00:00") // School opens
+  lateThreshold String   @default("08:00:00") // After this time students are marked late
+  closeTime     String   @default("17:00:00") // School closes
+  
+  // Additional useful configs
+  weekendDays   String[] @default(["saturday", "sunday"]) // Days when school is closed
+  graceMinutes  Int      @default(15)       // Grace period in minutes after lateThreshold
+  
+  // Timestamps
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("global_attendance_config")
+}
+
+// New model for tracking holidays and special days
+model SchoolCalendar {
+  id           String         @id @default(uuid())
+  date         DateTime       @unique @db.Date
+  name         String
+  description  String?
+  type         CalendarDayType
+  
+  // Timestamps
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([date])
+  @@index([type])
+  @@map("school_calendar")
+}
+
+// New model for attendance reports
+model AttendanceReport {
+  id           String         @id @default(uuid())
+  reportDate   DateTime       @db.Date
+  classId      String?
+  reportType   ReportType
+  generatedBy  String?
+  reportData   Json
+  
+  // Timestamps
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([reportDate])
+  @@index([classId])
+  @@index([reportType])
+  @@map("attendance_reports")
+}
+
+// Enums
+enum Role {
+  admin
+  manager
+  staff
+  accountant
+  mentor
+}
+
+enum Gender {
+  male
+  female
+  other
+  prefer_not_to_say
+}
+
+enum StudentGender {
+  male
+  female
+}
+
+enum AttendanceStatus {
+  present
+  absent
+  late
+  excused
+}
+
+enum CalendarDayType {
+  holiday
+  exam_day
+  special_event
+  teacher_workday
+  shortened_day
+}
+
+enum ReportType {
+  daily
+  weekly
+  monthly
+  custom
+  class_based
+  student_based
+}

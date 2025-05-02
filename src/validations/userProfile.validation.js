@@ -21,7 +21,7 @@ const signUpSchema = Joi.object({
   bio: Joi.string().max(1000).allow(null, ''),
   isEnabled: Joi.boolean().default(true),
   isPublic: Joi.boolean().default(true),
-       // Address fields
+ 
   country: Joi.string().max(100).allow(null, ''),
   title: Joi.string().max(100).required(),
   city: Joi.string().max(100).allow(null, ''),

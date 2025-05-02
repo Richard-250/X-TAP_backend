@@ -1,49 +1,195 @@
-import { generateToken, generateNfcToken } from "../../utils/password.js";
-import { findUserByEmail, validateUserPassword, generatePasswordResetToken } from "../user/user.service.js";
-import { sendPasswordResetEmail, sendWelcomeEmail } from "../user/email.service.js";
-import jwt from 'jsonwebtoken'
-import db from '../../database/models/index.js'
-const { User } = db
+import { PrismaClient } from '@prisma/client';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
+import crypto from 'crypto';
+import { createError } from '../../utils/error.js';
+import { 
+  sendVerificationEmail, 
+  sendPasswordResetEmail, 
+  sendWelcomeEmail,
+  sendPasswordResetConfirmationEmail 
+} from "../user/email.service.js";
 
+const prisma = new PrismaClient();
+
+// JWT token generation
+export const generateToken = (user, expiresIn = '1d') => {
+  const payload = {
+    id: user.id,
+    email: user.email,
+    role: user.role
+  };
+  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn });
+};
+
+export const generateNfcToken = (email, password, expiresIn = '30d') => {
+  const payload = {
+    email,
+    password: `${password.substring(0, 1)}***`
+  };
+  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn });
+};
+
+// User lookup functions
+export const findUserByEmail = async (email) => {
+  return prisma.user.findUnique({
+    where: { email }
+  });
+};
+
+export const findUserById = async (id) => {
+  return prisma.user.findUnique({
+    where: { id }
+  });
+};
+
+export const findUserByVerificationToken = async (token) => {
+  return prisma.user.findFirst({
+    where: { 
+      verificationToken: token,
+      verificationExpires: {
+        gt: new Date()
+      }
+    }
+  });
+};
+
+export const findUserByResetToken = async (token, email) => {
+  return prisma.user.findFirst({
+    where: {
+      passwordResetToken: token,
+      email,
+      passwordResetExpires: {
+        gt: new Date()
+      }
+    }
+  });
+};
+
+// Password handling
+export const hashPassword = async (password) => {
+  const saltRounds = 10;
+  return bcrypt.hash(password, saltRounds);
+};
+
+export const validateUserPassword = async (plainPassword, hashedPassword) => {
+  return bcrypt.compare(plainPassword, hashedPassword);
+};
+
+export const generatePasswordResetToken = async (user) => {
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordResetToken: resetToken,
+      passwordResetExpires: expiresAt
+    }
+  });
+  
+  return { resetToken, expiresAt };
+};
+
+
+
+export const regenerateVerificationToken = async (user) => {
+  const verificationToken = crypto.randomBytes(32).toString('hex');
+  const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); 
+  
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      verificationToken,
+      verificationExpires
+    }
+  });
+  
+  await sendVerificationEmail(user, verificationToken);
+  return { verificationToken, verificationExpires };
+};
+
+
+export const updateUserPassword = async (user, newPassword) => {
+  const hashedPassword = await hashPassword(newPassword);
+  
+  return prisma.user.update({
+    where: { id: user.id },
+    data: {
+      password: hashedPassword,
+      passwordResetToken: null,
+      passwordResetExpires: null
+    }
+  });
+};
+
+export const resetUserPassword = async (user) => {
+  
+  const newPassword = `${Math.floor(1000 + Math.random() * 9000)}!`;
+  const hashedPassword = await hashPassword(newPassword);
+  
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      password: hashedPassword,
+      passwordResetToken: null,
+      passwordResetExpires: null,
+      isFirstLogin: true
+    }
+  });
+  
+  await sendPasswordResetConfirmationEmail(user, newPassword);
+  
+  return { 
+    user: updatedUser,
+    newPassword
+  };
+};
+
+// Authentication
 export const authenticateUser = async (email, password) => {
-  // Check if user exists
   const user = await findUserByEmail(email);
+  
   if (!user) {
-    return { success: false, code: 404, message: 'User not found' };
+    throw createError(404, 'User not found');
   }
   
-  // Check if user is verified
   if (!user.isVerified) {
-    return { 
-      success: false, 
-      code: 403, 
-      message: 'Account not verified. Please check your email for verification link.' 
-    };
+    throw createError(403, 'Account not verified. Please check your email for verification link.');
   }
   
-  // Verify password
   const isPasswordValid = await validateUserPassword(password, user.password);
+  
   if (!isPasswordValid) {
-    return { success: false, code: 401, message: 'Invalid password' };
-  }
-
-  if (user.isFirstLogin === true) {
-    // Fire-and-forget the email (won't delay login)
-   await sendWelcomeEmail(user).catch(emailError => {
-      if (process.env.NODE_ENV === 'testing') console.error(emailError);
-    });
-    
-    // Always update the flag regardless of email success
-    await user.update({ isFirstLogin: false }); 
+    throw createError(401, 'Invalid password');
   }
   
-  // Generate JWT token
+  
+  if (user.isFirstLogin) {
+    try {
+      await sendWelcomeEmail(user);
+    } catch (error) {
+      console.error('Failed to send welcome email:', error);
+      
+    }
+    
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { 
+        isFirstLogin: false,
+        lastLogin: new Date()
+      }
+    });
+  } else {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLogin: new Date() }
+    });
+  }
+  
   const token = generateToken(user);
   
   return {
-    success: true,
-    code: 200,
-    message: 'Login successful',
     token,
     user: {
       id: user.id,
@@ -57,218 +203,147 @@ export const authenticateUser = async (email, password) => {
   };
 };
 
+// NFC token-related functions
 export const generateNfcLoginToken = async (email, password) => {
-  try {
-    // Validate credentials
-    // const authResult = await authenticateUser(email, password);
-    // if (!authResult.success) return authResult;
-
-    
-    // Find user (make sure to include raw: true if needed)
-    const user = await findUserByEmail(email);
-    if (!user) {
-      return { 
-        success: false, 
-        code: 404, 
-        message: 'User not found' 
-      };
-    }
-
-    const isPasswordValid = await validateUserPassword(password, user.password);
-    if (!isPasswordValid) {
-      return { success: false, code: 401, message: 'Invalid password' };
-    }
-    
+  const user = await findUserByEmail(email);
   
-    const nfcToken = generateNfcToken(email, password, '30d');
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
-    // Method 1: Using save() (often more reliable for first-time saves)
-    user.nfcLoginToken = nfcToken;
-    user.nfcLoginTokenExpires = expiresAt;
-    await user.save();
-
-    return {
-      success: true,
-      code: 200,
-      message: 'NFC token generated and stored successfully',
-      nfcToken,
-      expiresAt,
+  if (!user) {
+    throw createError(404, 'User not found');
+  }
+  
+  const isPasswordValid = await validateUserPassword(password, user.password);
+  
+  if (!isPasswordValid) {
+    throw createError(401, 'Invalid password');
+  }
+  
+  const nfcToken = generateNfcToken(email, password, '30d');
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+  
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      nfcLoginToken: nfcToken,
+      nfcLoginTokenExpires: expiresAt
+    }
+  });
+  
+  return {
+    nfcToken,
+    expiresAt,
+    user: {
       title: user.title,
       profilePhoto: user.profilePhoto
-    };
-
-  } catch (error) {
-    console.error('Error in generateNfcLoginToken:', error);
-    return { 
-      success: false, 
-      code: 500, 
-      message: 'Failed to store NFC token',
-      error: error.message 
-    };
-  }
+    }
+  };
 };
 
 export const authenticateWithNfcToken = async (nfcToken) => {
   if (!nfcToken || typeof nfcToken !== 'string') {
-    return { 
-      success: false, 
-      code: 400, 
-      message: 'Invalid NFC token format',
-      data: null
-    };
+    throw createError(400, 'Invalid NFC token format');
   }
-
+  
   try {
-    // Decode token to get email
     const decoded = jwt.decode(nfcToken);
     const userEmail = decoded?.email;
     
     if (!userEmail) {
-      return { 
-        success: false, 
-        code: 401, 
-        message: 'Invalid NFC token payload - missing email',
-        data: null
-      };
+      throw createError(401, 'Invalid NFC token payload - missing email');
     }
-
-    // Find user by email
-    const user = await User.findOne({ where: { email: userEmail } });
+    
+    const user = await prisma.user.findUnique({
+      where: { email: userEmail }
+    });
     
     if (!user) {
-      return { 
-        success: false, 
-        code: 404, 
-        message: 'User not found',
-        data: null
-      };
+      throw createError(404, 'User not found');
     }
-
-    // Verify token matches and is not expired
+    
     if (user.nfcLoginToken !== nfcToken) {
-      return { 
-        success: false, 
-        code: 401, 
-        message: 'NFC token mismatch',
-        data: null
-      };
+      throw createError(401, 'NFC token mismatch');
     }
-
+    
     if (new Date() > new Date(user.nfcLoginTokenExpires)) {
-      await user.update({ 
-        nfcLoginToken: null,
-        nfcLoginTokenExpires: null 
-      });
-      return { 
-        success: false, 
-        code: 401, 
-        message: 'NFC token expired',
-        data: null
-      };
-    }
-
-    // Cryptographic verification
-    jwt.verify(nfcToken, process.env.JWT_SECRET);
-
-    // Generate session token
-    const sessionToken = generateToken(user);
-    await user.update({ lastLogin: new Date() });
-
-    return {
-      success: true,
-      code: 200,
-      message: 'NFC login successful',
-      data: {
-        token: sessionToken,
-        expiresAt: user.nfcLoginTokenExpires,
-        user: {
-          id: user.id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          role: user.role,
-          title: user.title,
-          profilePhoto: user.profilePhoto
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { 
+          nfcLoginToken: null,
+          nfcLoginTokenExpires: null 
         }
+      });
+      throw createError(401, 'NFC token expired');
+    }
+    
+    // Verify token signature
+    jwt.verify(nfcToken, process.env.JWT_SECRET);
+    
+    const sessionToken = generateToken(user);
+    
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLogin: new Date() }
+    });
+    
+    return {
+      token: sessionToken,
+      user: {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+        title: user.title,
+        profilePhoto: user.profilePhoto
       }
     };
-    
   } catch (error) {
-    console.error('NFC login error:', error);
-
-    // Clear invalid token if possible
     if (error instanceof jwt.JsonWebTokenError) {
       try {
         const decoded = jwt.decode(nfcToken);
         if (decoded?.email) {
-          await User.update(
-            { nfcLoginToken: null, nfcLoginTokenExpires: null },
-            { where: { email: decoded.email } }
-          );
+          await prisma.user.update({
+            where: { email: decoded.email },
+            data: {
+              nfcLoginToken: null,
+              nfcLoginTokenExpires: null
+            }
+          });
         }
       } catch (cleanupError) {
         console.error('Token cleanup failed:', cleanupError);
       }
     }
-
-    return { 
-      success: false, 
-      code: 401, 
-      message: 'Authentication failed',
-      data: null,
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    };
+    throw error;
   }
 };
 
+// Password reset flow
 export const processForgotPassword = async (email) => {
-  // Find user by email
   const user = await findUserByEmail(email);
   
-  // If no user found or user not verified, return generic success message for security
   if (!user) {
-    return {
-      success: true,
-      code: 200,
-      message: 'If this email exists and is verified, a password reset link has been sent'
-    };
+    // Don't reveal if email exists or not
+    return;
   }
   
-  // Check if user is verified
   if (!user.isVerified) {
-    return {
-      success: false,
-      code: 403,
-      message: 'Account not verified. Please verify your account first.'
-    };
+    throw createError(403, 'Account not verified. Please verify your account first.');
   }
+  
+  // Generate token
+  const { resetToken } = await generatePasswordResetToken(user);
   
   try {
-    // Generate reset token
-    const { resetToken } = await generatePasswordResetToken(user);
-    
-    // Send password reset email
     await sendPasswordResetEmail(user, resetToken);
-    
-    return {
-      success: true,
-      code: 200,
-      message: 'Password reset link sent to your email'
-    };
   } catch (error) {
-    // Clear token if email fails
-    await user.update({
-      passwordResetToken: null,
-      passwordResetExpires: null
+    // Clear the token if email sending fails
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetToken: null,
+        passwordResetExpires: null
+      }
     });
-    
-    return {
-      success: false,
-      code: 500,
-      message: 'Error sending email. Please try again.',
-      error: error.message
-    };
+    throw createError(500, 'Error sending email. Please try again.');
   }
 };
-

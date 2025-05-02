@@ -7,13 +7,18 @@ import { profilePhotoController } from '../../../controllers/user.controller.js'
 import validateRoleUpdate from '../../../validations/roleUpdate.validation.js';
 import validateUserId from '../../../validations/userId.validation.js';
 import validateProfilePhoto from '../../../validations/profilePhoto.validate.js';
+import { validateCreateManager } from '../../../validations/createManager.validation.js';
+import { validateCreateUser } from '../../../validations/createUser.validation.js';
 
 const router = express.Router();
 
 
-router.post('/register-manager', validateUserProfile, authenticated, isVerified, isAdmin, authorizedRoles('admin'), userController.createManager);
-router.post('/register-user', validateUserProfile, authenticated, isVerified, authorizedRoles('admin', 'manager'), userController.createUser);
-router.get('/get-all-users', authenticated, isVerified, isAdmin, authorizedRoles('admin'), userController.getAllUsers);
+router.post('/create/manager', validateCreateManager, authenticated,isAdmin, userController.createManager);
+router.post('/create/user', validateCreateUser, authenticated,authorizedRoles('admin', 'manager'), userController.createUser);
+
+
+router.get('/', authenticated, isVerified, isAdmin, authorizedRoles('admin'), userController.getAllUsers);
+
 router.get('/get-all-users-manager', authenticated, isVerified, authorizedRoles('manager'), userController.getUserByManager);
 router.get('/get-my-profile', authenticated, isVerified, userController.getMyProfile);
 router.patch('/update-my-profile', validateUserUpdate, authenticated, isVerified, userController.updateMyProfile);
