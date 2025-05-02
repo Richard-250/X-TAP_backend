@@ -15,7 +15,9 @@ const loginSchema = Joi.object({
  const validateLogin = (req, res, next) => {
     const { error } = loginSchema.validate(req.body);
     if (error) {
-      return res.status(400).json({ message: error.details[0].message });
+      const cleanMessage = (msg) => msg.replace(/[^a-zA-Z0-9 .]/g, '');
+      const cleanedMessage = cleanMessage(error.details[0].message);
+      return res.status(400).json({ message: cleanedMessage });
     }
     next();
   };

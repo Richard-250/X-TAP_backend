@@ -1,14 +1,20 @@
 import 'dotenv/config';
 import app from './app.js';
-import { initDb } from './database/initializer.js';
+import main from './config/db_test.js';
+import { PrismaClient } from '@prisma/client';
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8888;
+
+main()
+  .then(() => {
+    console.log('Database connection successful');
+  })
+  .catch((error) => {
+    console.error('Database connection error:', error);
+  });
 
 const startServer = async () => {
   try {
-    await initDb();
-
-    // Bind to 0.0.0.0 so Railway can reach your app
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on port ${PORT}`);
     });

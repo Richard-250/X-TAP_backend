@@ -1,7 +1,7 @@
-import db from '../../database/models/index.js';
-import { Op } from 'sequelize';
-const { Student, Class, Course } = db;
+import { PrismaClient } from '@prisma/client';
 import { generateStudentId } from '../../utils/generateStudentId.js';
+
+const prisma = new PrismaClient();
 
 // Function to generate profile avatar based on name and gender
 const generateProfileAvatar = (firstName, lastName, gender) => {
@@ -51,7 +51,7 @@ export const createStudent = async (studentData) => {
     }
 
     // Check if student email already exists
-    const existingStudent = await Student.findOne({ where: { email } });
+    const existingStudent = await prisma.student.findUnique({ where: { email } });
     if (existingStudent) {
         throw {
             status: 409,
@@ -62,8 +62,8 @@ export const createStudent = async (studentData) => {
 
     // Validate if classId and courseId exist
     const [classExists, courseExists] = await Promise.all([
-        Class.findByPk(classId),
-        Course.findByPk(courseId)
+        prisma.class.findUnique({ where: { id: classId } }),
+        prisma.course.findUnique({ where: { id: courseId } })
     ]);
 
     if (!classExists) {
@@ -80,34 +80,46 @@ export const createStudent = async (studentData) => {
         };
     }
 
+    // Generate a unique student ID
+    const today = new Date();
+    const count = await prisma.student.count({
+        where: {
+            enrollmentDate: {
+                gte: new Date(today.toDateString()),
+            },
+        },
+    });
+
+    const studentId = generateStudentId(today, count + 1);
+
     // Generate default avatar if profilePhoto is not provided
     const studentProfilePhoto = profilePhoto || generateProfileAvatar(firstName, lastName, gender);
-    
-    // Generate a unique student ID
-    const studentId = await generateStudentId();
 
     // Create the student
-    const newStudent = await Student.create({
-        firstName,
-        lastName,
-        email,
-        profilePhoto: studentProfilePhoto,
-        phoneNumber,
-        dateOfBirth,
-        gender,
-        country,
-        city,
-        province,
-        district,
-        sector,
-        village,
-        road,
-        postalCode,
-        addressLine1,
-        addressLine2,
-        classId,
-        courseId,
-        studentId,
+    const newStudent = await prisma.student.create({
+        data: {
+            firstName,
+            lastName,
+            email,
+            profilePhoto: studentProfilePhoto,
+            phoneNumber,
+            dateOfBirth,
+            gender,
+            country,
+            city,
+            province,
+            district,
+            sector,
+            village,
+            road,
+            postalCode,
+            addressLine1,
+            addressLine2,
+            classId,
+            courseId,
+            studentId,
+            enrollmentDate: today
+        }
     });
 
     return newStudent;
@@ -119,7 +131,7 @@ export const getStudents = async (queryParams) => {
         page = 1,
         pageSize = 10,
         sortBy = 'createdAt',
-        sortOrder = 'DESC',
+        sortOrder = 'desc',
         // Address filters
         country,
         city,
@@ -136,7 +148,7 @@ export const getStudents = async (queryParams) => {
     } = queryParams;
 
     // Calculate pagination offset
-    const offset = (page - 1) * pageSize;
+    const offset = (Number.parseInt(page) - 1) * Number.parseInt(pageSize);
 
     // Build the where clause for filtering
     const where = {};
@@ -157,25 +169,25 @@ export const getStudents = async (queryParams) => {
     if (courseId) where.courseId = courseId;
 
     // Get total count for pagination info
-    const totalCount = await Student.count({ where });
+    const totalCount = await prisma.student.count({ where });
 
     // Fetch students with filters, sorting, and pagination
-    const students = await Student.findAll({
+    const students = await prisma.student.findMany({
         where,
-        order: [[sortBy, sortOrder]],
-        limit: parseInt(pageSize),
-        offset: offset,
-        include: [
-            { model: Class, attributes: ['id', 'name'] },
-            { model: Course, attributes: ['id', 'name'] }
-        ]
+        orderBy: { [sortBy]: sortOrder },
+        skip: offset,
+        take: Number.parseInt(pageSize),
+        include: {
+            class: { select: { id: true, name: true } },
+            course: { select: { id: true, name: true } }
+        }
     });
 
     return {
         students,
         pagination: {
-            currentPage: parseInt(page),
-            pageSize: parseInt(pageSize),
+            currentPage: Number.parseInt(page),
+            pageSize: Number.parseInt(pageSize),
             totalItems: totalCount,
             totalPages: Math.ceil(totalCount / pageSize)
         }
@@ -188,7 +200,7 @@ export const getStudentsByClassId = async (classId, queryParams) => {
         page = 1,
         pageSize = 10,
         sortBy = 'firstName',
-        sortOrder = 'ASC',
+        sortOrder = 'asc',
         // Address filters
         country,
         city,
@@ -211,7 +223,7 @@ export const getStudentsByClassId = async (classId, queryParams) => {
     }
 
     // Check if class exists
-    const classExists = await Class.findByPk(classId);
+    const classExists = await prisma.class.findUnique({ where: { id: classId } });
     if (!classExists) {
         throw {
             status: 404,
@@ -219,7 +231,7 @@ export const getStudentsByClassId = async (classId, queryParams) => {
         };
     }
 
-    const offset = (page - 1) * pageSize;
+    const offset = (Number.parseInt(page) - 1) * Number.parseInt(pageSize);
     const where = { classId };
 
     // Apply address filters if provided
@@ -236,18 +248,18 @@ export const getStudentsByClassId = async (classId, queryParams) => {
     if (gender) where.gender = gender;
 
     // Get total count for pagination
-    const totalCount = await Student.count({ where });
+    const totalCount = await prisma.student.count({ where });
 
     // Fetch students in the same class
-    const students = await Student.findAll({
+    const students = await prisma.student.findMany({
         where,
-        order: [[sortBy, sortOrder]],
-        limit: parseInt(pageSize),
-        offset: offset,
-        include: [
-            { model: Class, attributes: ['id', 'name'] },
-            { model: Course, attributes: ['id', 'name'] }
-        ]
+        orderBy: { [sortBy]: sortOrder },
+        skip: offset,
+        take: Number.parseInt(pageSize),
+        include: {
+            class: { select: { id: true, name: true } },
+            course: { select: { id: true, name: true } }
+        }
     });
 
     return {
@@ -257,8 +269,8 @@ export const getStudentsByClassId = async (classId, queryParams) => {
             name: classExists.name
         },
         pagination: {
-            currentPage: parseInt(page),
-            pageSize: parseInt(pageSize),
+            currentPage: Number.parseInt(page),
+            pageSize: Number.parseInt(pageSize),
             totalItems: totalCount,
             totalPages: Math.ceil(totalCount / pageSize)
         }
@@ -271,7 +283,7 @@ export const getStudentsByCourseId = async (courseId, queryParams) => {
         page = 1,
         pageSize = 10,
         sortBy = 'firstName',
-        sortOrder = 'ASC',
+        sortOrder = 'asc',
         // Address filters
         country,
         city,
@@ -295,7 +307,7 @@ export const getStudentsByCourseId = async (courseId, queryParams) => {
     }
 
     // Check if course exists
-    const courseExists = await Course.findByPk(courseId);
+    const courseExists = await prisma.course.findUnique({ where: { id: courseId } });
     if (!courseExists) {
         throw {
             status: 404,
@@ -303,7 +315,7 @@ export const getStudentsByCourseId = async (courseId, queryParams) => {
         };
     }
 
-    const offset = (page - 1) * pageSize;
+    const offset = (Number.parseInt(page) - 1) * Number.parseInt(pageSize);
     const where = { courseId };
 
     // Apply address filters if provided
@@ -321,18 +333,18 @@ export const getStudentsByCourseId = async (courseId, queryParams) => {
     if (classId) where.classId = classId;
 
     // Get total count for pagination
-    const totalCount = await Student.count({ where });
+    const totalCount = await prisma.student.count({ where });
 
     // Fetch students taking the same course
-    const students = await Student.findAll({
+    const students = await prisma.student.findMany({
         where,
-        order: [[sortBy, sortOrder]],
-        limit: parseInt(pageSize),
-        offset: offset,
-        include: [
-            { model: Class, attributes: ['id', 'name'] },
-            { model: Course, attributes: ['id', 'name'] }
-        ]
+        orderBy: { [sortBy]: sortOrder },
+        skip: offset,
+        take: Number.parseInt(pageSize),
+        include: {
+            class: { select: { id: true, name: true } },
+            course: { select: { id: true, name: true } }
+        }
     });
 
     return {
@@ -342,8 +354,8 @@ export const getStudentsByCourseId = async (courseId, queryParams) => {
             name: courseExists.name
         },
         pagination: {
-            currentPage: parseInt(page),
-            pageSize: parseInt(pageSize),
+            currentPage: Number.parseInt(page),
+            pageSize: Number.parseInt(pageSize),
             totalItems: totalCount,
             totalPages: Math.ceil(totalCount / pageSize)
         }
@@ -357,10 +369,10 @@ export const searchStudents = async (queryParams) => {
         page = 1,
         pageSize = 10,
         sortBy = 'createdAt',
-        sortOrder = 'DESC'
+        sortOrder = 'desc'
     } = queryParams;
 
-    const offset = (parseInt(page) - 1) * parseInt(pageSize);
+    const offset = (Number.parseInt(page) - 1) * Number.parseInt(pageSize);
 
     if (!search.trim()) {
         throw {
@@ -372,32 +384,32 @@ export const searchStudents = async (queryParams) => {
     const searchTerm = `%${search.trim()}%`;
 
     const where = {
-        [Op.or]: [
-            { firstName: { [Op.iLike]: searchTerm } },
-            { lastName: { [Op.iLike]: searchTerm } },
-            { email: { [Op.iLike]: searchTerm } },
-            { phoneNumber: { [Op.iLike]: searchTerm } }
+        OR: [
+            { firstName: { contains: searchTerm, mode: 'insensitive' } },
+            { lastName: { contains: searchTerm, mode: 'insensitive' } },
+            { email: { contains: searchTerm, mode: 'insensitive' } },
+            { phoneNumber: { contains: searchTerm, mode: 'insensitive' } }
         ]
     };
 
-    const totalItems = await Student.count({ where });
+    const totalItems = await prisma.student.count({ where });
 
-    const students = await Student.findAll({
+    const students = await prisma.student.findMany({
         where,
-        order: [[sortBy, sortOrder.toUpperCase()]],
-        limit: parseInt(pageSize),
-        offset,
-        include: [
-            { model: Class, attributes: ['id', 'name'] },
-            { model: Course, attributes: ['id', 'name'] }
-        ]
+        orderBy: { [sortBy]: sortOrder },
+        skip: offset,
+        take: Number.parseInt(pageSize),
+        include: {
+            class: { select: { id: true, name: true } },
+            course: { select: { id: true, name: true } }
+        }
     });
 
     return {
         students,
         pagination: {
-            currentPage: parseInt(page),
-            pageSize: parseInt(pageSize),
+            currentPage: Number.parseInt(page),
+            pageSize: Number.parseInt(pageSize),
             totalItems,
             totalPages: Math.ceil(totalItems / pageSize)
         }

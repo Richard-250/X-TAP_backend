@@ -1,71 +1,59 @@
-import db from '../../database/models/index.js';
-import { Op } from "sequelize";
-import { Sequelize } from 'sequelize';
+import { PrismaClient } from '@prisma/client';
 import { generateRandomToken, generatePassword, hashPassword, verifyPassword } from "../../utils/password.js";
 import { sendVerificationEmail, sendPasswordEmail } from "./email.service.js";
+import { AppError, createError } from "../../utils/error.js";
 
-const { User } = db;
+const prisma = new PrismaClient();
 
 export const findUserByEmail = async (email) => {
-  return await User.findOne({ where: { email } });
+  return await prisma.user.findUnique({ where: { email } });
 };
 
 export const findUserById = async (id) => {
-  return await User.findByPk(id);
+  return await prisma.user.findUnique({ where: { id } });
 };
 
 export const disableUser = async (userId) => {
-  try {
-    const user = await User.findByPk(userId);
-    
-    if (!user) {
-      return null;
-    }
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw createError(404, 'User not found');
 
-    // Don't disable already disabled accounts
-    if (user.isEnabled === false) {
-      return { user };
-    }
-    if (user.isVerified === false) {
-      return { user };
-    }
-
-    const updatedUser = await user.update({
-      isEnabled: false,
-      disabledAt: new Date() 
-    });
-
-    return {
-      user: updatedUser,
-    };
-  } catch (error) {
-    throw error;
+  if (!user.isEnabled || !user.isVerified) {
+    return { user };
   }
-}
+
+  const updatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      isEnabled: false,
+      disabledAt: new Date()
+    }
+  });
+
+  return { user: updatedUser };
+};
 
 export const findUserByVerificationToken = async (token) => {
-  return await User.findOne({
+  return await prisma.user.findFirst({
     where: {
       verificationToken: token,
-      verificationExpires: { [Op.gt]: new Date() }
+      verificationExpires: { gt: new Date() }
     }
   });
 };
 
 export const findUserByResetToken = async (token, email) => {
-  return await User.findOne({
+  return await prisma.user.findFirst({
     where: {
       email,
       passwordResetToken: token,
-      passwordResetExpires: { [Op.gt]: new Date() }
+      passwordResetExpires: { gt: new Date() }
     }
   });
 };
 
 export const createUser = async (userData, createdById) => {
-
   const verificationToken = generateRandomToken();
-  const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+  const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   const newUserData = {
     ...userData,
@@ -77,19 +65,16 @@ export const createUser = async (userData, createdById) => {
     isPublic: true,
     profilePhoto: generateProfileAvatar(userData.firstName, userData.lastName, userData.gender)
   };
+
   
-  // Create user
-  const newUser = await User.create(newUserData);
-  
-  // Send verification email
+  const newUser = await prisma.user.create({ data: newUserData });
   await sendVerificationEmail(newUser, verificationToken);
-  
+
   return newUser;
 };
 
 export const generateProfileAvatar = (firstName, lastName, gender) => {
   const seed = `${firstName}+${lastName}`;
-
   switch (gender) {
     case 'female':
       return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}&hair=longHairStraight&accessories=round&facialHair=blank`;
@@ -100,181 +85,203 @@ export const generateProfileAvatar = (firstName, lastName, gender) => {
   }
 };
 
-
 export const verifyUserAccount = async (user) => {
-  // Generate a random password
   const newPassword = generatePassword();
   const hashedPassword = await hashPassword(newPassword);
-    
-  // Update user data
-  user.isVerified = true;
-  user.password = hashedPassword;
-  user.verificationToken = null;
-  user.verificationExpires = null;
-  
-  // Execute user save and email sending in parallel
-  await Promise.all([
-    user.save(),
-    sendPasswordEmail(user, newPassword).catch(err => {
-      console.error('Failed to send password email:', err);
-      // Don't reject the promise, so verification continues even if email fails
-      return null; 
-    })
-  ]);
-    
-  return { user, newPassword };
+
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      isVerified: true,
+      password: hashedPassword,
+      verificationToken: null,
+      verificationExpires: null
+    }
+  });
+
+  await sendPasswordEmail(updatedUser, newPassword);
+
+  return { user: updatedUser, newPassword };
 };
 
 
 export const updateUserPassword = async (user, newPassword) => {
   const hashedPassword = await hashPassword(newPassword);
-  
-  // Update password
-  user.password = hashedPassword;
-  await user.save();
-  
-  return user;
+
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      password: hashedPassword
+    }
+  });
+
+  return updatedUser;
 };
 
 export const generatePasswordResetToken = async (user) => {
   const resetToken = generateRandomToken();
-  const resetTokenExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
-  
-  await user.update({
-    passwordResetToken: resetToken,
-    passwordResetExpires: resetTokenExpires
+  const resetTokenExpires = new Date(Date.now() + 10 * 60 * 1000);
+
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordResetToken: resetToken,
+      passwordResetExpires: resetTokenExpires
+    }
   });
-  
-  return { user, resetToken };
+
+  return { user: updatedUser, resetToken };
 };
 
 export const resetUserPassword = async (user) => {
   const newPassword = generatePassword();
   const hashedPassword = await hashPassword(newPassword);
-  
-  await user.update({
-    password: hashedPassword,
-    passwordResetToken: null,
-    passwordResetExpires: null,
-    passwordChangedAt: new Date()
+
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      password: hashedPassword,
+      passwordResetToken: null,
+      passwordResetExpires: null,
+      passwordChangedAt: new Date()
+    }
   });
-  
-  await sendPasswordEmail(user, newPassword);
-  
-  return { user, newPassword };
+
+  await sendPasswordEmail(updatedUser, newPassword);
+
+  return { user: updatedUser, newPassword };
 };
 
 export const regenerateVerificationToken = async (user) => {
   const verificationToken = generateRandomToken();
-  const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-  
-  user.verificationToken = verificationToken;
-  user.verificationExpires = verificationExpires;
-  await user.save();
-  
-  await sendVerificationEmail(user, verificationToken);
-  
-  return { user, verificationToken, verificationExpires };
+  const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      verificationToken,
+      verificationExpires
+    }
+  });
+
+  await sendVerificationEmail(updatedUser, verificationToken);
+
+  return { user: updatedUser, verificationToken, verificationExpires };
 };
 
 export const getAllUsers = async (filters = {}, page = 1, limit = 10) => {
   const offset = (page - 1) * limit;
   const whereClause = {};
-  let order = [['createdAt', 'DESC']]; // Default sorting
-  
-  // Handle search across multiple fields
-  if (filters.search) {
-    whereClause[Sequelize.Op.or] = [
-      { firstName: { [Sequelize.Op.iLike]: `%${filters.search}%` } },
-      { lastName: { [Sequelize.Op.iLike]: `%${filters.search}%` } },
-      { email: { [Sequelize.Op.iLike]: `%${filters.search}%` } },
-      { bio: { [Sequelize.Op.iLike]: `%${filters.search}%` } },
-      { phoneNumber: { [Sequelize.Op.iLike]: `%${filters.search}%` } }
+  let orderBy = [{ createdAt: 'desc' }];
+
+  const modifiedFilters = { ...filters };
+
+  if (modifiedFilters.search) {
+    whereClause.OR = [
+      { firstName: { contains: modifiedFilters.search, mode: 'insensitive' } },
+      { lastName: { contains: modifiedFilters.search, mode: 'insensitive' } },
+      { email: { contains: modifiedFilters.search, mode: 'insensitive' } },
+      { bio: { contains: modifiedFilters.search, mode: 'insensitive' } },
+      { phoneNumber: { contains: modifiedFilters.search, mode: 'insensitive' } }
     ];
-    delete filters.search;
+    delete modifiedFilters.search;
   }
-  
-  // Handle sorting
-  if (filters.sort) {
-    const sortParams = filters.sort.split(',');
-    order = sortParams.map(param => {
+
+  if (modifiedFilters.sort) {
+    const sortParams = modifiedFilters.sort.split(',');
+    orderBy = sortParams.map(param => {
       const [field, direction] = param.split(':');
-      return [field, (direction || 'ASC').toUpperCase()];
+      return { [field]: direction?.toUpperCase() === 'DESC' ? 'desc' : 'asc' };
     });
-    delete filters.sort;
+    delete modifiedFilters.sort;
   }
-  
-  // Handle date range filters with operators
+
   const dateFields = ['createdAt', 'lastLogin', 'disabledAt', 'verificationExpires', 'passwordResetExpires'];
-  dateFields.forEach(field => {
-    // Greater than or equal
-    if (filters[`${field}[gte]`]) {
-      whereClause[field] = {
-        ...whereClause[field],
-        [Sequelize.Op.gte]: new Date(filters[`${field}[gte]`])
-      };
-      delete filters[`${field}[gte]`];
+  for (const field of dateFields) {
+    if (modifiedFilters[`${field}[gte]`]) {
+      whereClause[field] = { ...whereClause[field], gte: new Date(modifiedFilters[`${field}[gte]`]) };
+      delete modifiedFilters[`${field}[gte]`];
     }
-    // Less than or equal
-    if (filters[`${field}[lte]`]) {
-      whereClause[field] = {
-        ...whereClause[field],
-        [Sequelize.Op.lte]: new Date(filters[`${field}[lte]`])
-      };
-      delete filters[`${field}[lte]`];
+    if (modifiedFilters[`${field}[lte]`]) {
+      whereClause[field] = { ...whereClause[field], lte: new Date(modifiedFilters[`${field}[lte]`]) };
+      delete modifiedFilters[`${field}[lte]`];
     }
-  });
-  
-  // Handle array parameters (like multiple roles)
+  }
+
   const arrayParams = ['role'];
-  arrayParams.forEach(param => {
-    if (filters[`${param}[]`] && Array.isArray(filters[`${param}[]`])) {
-      whereClause[param] = { [Sequelize.Op.in]: filters[`${param}[]`] };
-      delete filters[`${param}[]`];
+  for (const param of arrayParams) {
+    if (modifiedFilters[`${param}[]`] && Array.isArray(modifiedFilters[`${param}[]`])) {
+      whereClause[param] = { in: modifiedFilters[`${param}[]`] };
+      delete modifiedFilters[`${param}[]`];
     }
-  });
-  
-  // Handle boolean conversions
+  }
+
   const booleanFields = ['isVerified', 'isEnabled', 'isFirstLogin', 'isPublic'];
-  booleanFields.forEach(field => {
-    if (filters[field] !== undefined) {
-      // Convert string 'true'/'false' to actual boolean
-      whereClause[field] = filters[field] === 'true';
-      delete filters[field];
+  for (const field of booleanFields) {
+    if (modifiedFilters[field] !== undefined) {
+      whereClause[field] = modifiedFilters[field] === 'true';
+      delete modifiedFilters[field];
     }
-  });
-  
-  // Add remaining filters directly to where clause
-  Object.keys(filters).forEach(key => {
-    // Skip pagination parameter
+  }
+
+  for (const key of Object.keys(modifiedFilters)) {
     if (key !== 'page' && key !== 'limit') {
-      whereClause[key] = filters[key];
+      whereClause[key] = modifiedFilters[key];
     }
-  });
-  
-  // Count total users with these filters
-  const totalUsers = await User.count({ where: whereClause });
+  }
+
+  const [totalUsers, users] = await Promise.all([
+    prisma.user.count({ where: whereClause }),
+    prisma.user.findMany({
+      where: whereClause,
+      take: limit,
+      skip: offset,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phoneNumber: true,
+        profilePhoto: true,
+        role: true,
+        isVerified: true,
+        createdBy: true,
+        lastLogin: true,
+        dateOfBirth: true,
+        gender: true,
+        isEnabled: true,
+        disabledAt: true,
+        isFirstLogin: true,
+        isPublic: true,
+        country: true,
+        city: true,
+        province: true,
+        district: true,
+        sector: true,
+        village: true,
+        road: true,
+        postalCode: true,
+        addressLine1: true,
+        addressLine2: true,
+        title: true,
+        nfcLoginToken: true,
+        nfcLoginTokenExpires: true,
+        createdAt: true,
+        updatedAt: true,
+        bio: true
+      },
+      orderBy
+    })
+  ]);
+
   const totalPages = Math.ceil(totalUsers / limit);
-  
-  // Get filtered users
-  const users = await User.findAll({
-    where: whereClause,
-    limit,
-    offset,
-    attributes: {
-      exclude: ['password', 'verificationToken', 'verificationExpires', 'passwordResetToken', 'passwordResetExpires']
-    },
-    order
-  });
-  
-  // Add virtual fields that aren't automatically included
-  const enhancedUsers = users.map(user => {
-    const userData = user.toJSON();
-    userData.fullName = user.getFullName();
-    userData.age = user.age;
-    return userData;
-  });
-  
+
+  const enhancedUsers = users.map(user => ({
+    ...user,
+    fullName: `${user.firstName} ${user.lastName}`,
+    age: user.dateOfBirth ? Math.floor((new Date() - new Date(user.dateOfBirth)) / 31557600000) : null
+  }));
+
   return {
     users: enhancedUsers,
     pagination: {
@@ -290,224 +297,238 @@ export const getAllUsers = async (filters = {}, page = 1, limit = 10) => {
 
 export const getNonAdminUsers = async (filters = {}, page = 1, limit = 10) => {
   const offset = (page - 1) * limit;
-  
-  // Base where clause with default filters (these can't be overridden)
+
   const whereClause = {
-    role: {
-      [Sequelize.Op.notIn]: ['admin', 'manager']
-    },
+    role: { not: { in: ['admin', 'manager'] } },
     isVerified: true,
     isEnabled: true
   };
-  
-  let order = [['createdAt', 'DESC']]; // Default sorting
-  
-  // Handle search across multiple fields
-  if (filters.search) {
-    whereClause[Sequelize.Op.or] = [
-      { firstName: { [Sequelize.Op.iLike]: `%${filters.search}%` } },
-      { lastName: { [Sequelize.Op.iLike]: `%${filters.search}%` } },
-      { email: { [Sequelize.Op.iLike]: `%${filters.search}%` } },
-      { bio: { [Sequelize.Op.iLike]: `%${filters.search}%` } },
-      { phoneNumber: { [Sequelize.Op.iLike]: `%${filters.search}%` } }
+
+  let orderBy = [{ createdAt: 'desc' }];
+  const modifiedFilters = { ...filters };
+
+  if (modifiedFilters.search) {
+    whereClause.OR = [
+      { firstName: { contains: modifiedFilters.search, mode: 'insensitive' } },
+      { lastName: { contains: modifiedFilters.search, mode: 'insensitive' } },
+      { email: { contains: modifiedFilters.search, mode: 'insensitive' } },
+      { bio: { contains: modifiedFilters.search, mode: 'insensitive' } },
+      { phoneNumber: { contains: modifiedFilters.search, mode: 'insensitive' } }
     ];
-    delete filters.search;
+    delete modifiedFilters.search;
   }
-  
-  // Handle sorting
-  if (filters.sort) {
-    const sortParams = filters.sort.split(',');
-    order = sortParams.map(param => {
+
+  if (modifiedFilters.sort) {
+    const sortParams = modifiedFilters.sort.split(',');
+    orderBy = sortParams.map(param => {
       const [field, direction] = param.split(':');
-      return [field, (direction || 'ASC').toUpperCase()];
+      return { [field]: direction?.toUpperCase() === 'DESC' ? 'desc' : 'asc' };
     });
-    delete filters.sort;
+    delete modifiedFilters.sort;
   }
-  
-  // Handle date range filters with operators
+
   const dateFields = ['createdAt', 'lastLogin', 'disabledAt', 'verificationExpires', 'passwordResetExpires'];
-  dateFields.forEach(field => {
-    // Greater than or equal
-    if (filters[`${field}[gte]`]) {
-      whereClause[field] = {
-        ...whereClause[field],
-        [Sequelize.Op.gte]: new Date(filters[`${field}[gte]`])
-      };
-      delete filters[`${field}[gte]`];
+  for (const field of dateFields) {
+    if (modifiedFilters[`${field}[gte]`]) {
+      whereClause[field] = { ...whereClause[field], gte: new Date(modifiedFilters[`${field}[gte]`]) };
+      delete modifiedFilters[`${field}[gte]`];
     }
-    // Less than or equal
-    if (filters[`${field}[lte]`]) {
-      whereClause[field] = {
-        ...whereClause[field],
-        [Sequelize.Op.lte]: new Date(filters[`${field}[lte]`])
-      };
-      delete filters[`${field}[lte]`];
+    if (modifiedFilters[`${field}[lte]`]) {
+      whereClause[field] = { ...whereClause[field], lte: new Date(modifiedFilters[`${field}[lte]`]) };
+      delete modifiedFilters[`${field}[lte]`];
     }
-  });
-  
-  // Handle array parameters (for multiple values of the same field)
-  const arrayParams = ['role'];
-  arrayParams.forEach(param => {
-    if (filters[`${param}[]`] && Array.isArray(filters[`${param}[]`])) {
-      // For role, we need to make sure admin and manager are still excluded
-      if (param === 'role') {
-        const allowedRoles = filters[`${param}[]`].filter(
-          role => !['admin', 'manager'].includes(role)
-        );
-        if (allowedRoles.length > 0) {
-          whereClause[param] = { [Sequelize.Op.in]: allowedRoles };
-        }
-      } else {
-        whereClause[param] = { [Sequelize.Op.in]: filters[`${param}[]`] };
-      }
-      delete filters[`${param}[]`];
-    }
-  });
-  
-  // Handle boolean conversions (skipping isVerified and isEnabled which are fixed)
-  const booleanFields = ['isFirstLogin', 'isPublic'];
-  booleanFields.forEach(field => {
-    if (filters[field] !== undefined) {
-      // Convert string 'true'/'false' to actual boolean
-      whereClause[field] = filters[field] === 'true';
-      delete filters[field];
-    }
-  });
-  
-  // Add remaining filters directly to where clause
-  Object.keys(filters).forEach(key => {
-    // Skip pagination parameters and reserved fields
-    if (key !== 'page' && key !== 'limit' && 
-        key !== 'isVerified' && key !== 'isEnabled' && 
-        key !== 'role') {
-      whereClause[key] = filters[key];
-    }
-  });
-  
-  try {
-    // Get total count and users in parallel for better performance
-    const [totalUsers, users] = await Promise.all([
-      User.count({ where: whereClause }),
-      User.findAll({
-        where: whereClause,
-        limit,
-        offset,
-        attributes: {
-          exclude: [
-            'password',
-            'verificationToken',
-            'verificationExpires',
-            'passwordResetToken',
-            'passwordResetExpires'
-          ]
-        },
-        order
-      })
-    ]);
-    
-    const totalPages = Math.ceil(totalUsers / limit);
-    
-    // Add virtual fields that aren't automatically included
-    const enhancedUsers = users.map(user => {
-      const userData = user.toJSON();
-      userData.fullName = user.getFullName();
-      userData.age = user.age;
-      return userData;
-    });
-    
-    return {
-      users: enhancedUsers,
-      pagination: {
-        totalUsers,
-        totalPages,
-        currentPage: page,
-        usersPerPage: limit,
-        hasNextPage: page < totalPages,
-        hasPreviousPage: page > 1
-      }
-    };
-  } catch (error) {
-    console.error('Error fetching non-admin users:', error);
-    throw error; // Re-throw the error for the controller to handle
   }
+
+  const arrayParams = ['role'];
+  for (const param of arrayParams) {
+    if (modifiedFilters[`${param}[]`] && Array.isArray(modifiedFilters[`${param}[]`])) {
+      const allowedRoles = modifiedFilters[`${param}[]`].filter(
+        role => !['admin', 'manager'].includes(role)
+      );
+      if (allowedRoles.length > 0) {
+        whereClause[param] = { in: allowedRoles };
+      }
+      delete modifiedFilters[`${param}[]`];
+    }
+  }
+
+  const booleanFields = ['isFirstLogin', 'isPublic'];
+  for (const field of booleanFields) {
+    if (modifiedFilters[field] !== undefined) {
+      whereClause[field] = modifiedFilters[field] === 'true';
+      delete modifiedFilters[field];
+    }
+  }
+
+  for (const key of Object.keys(modifiedFilters)) {
+    if (key !== 'page' && key !== 'limit' && key !== 'isVerified' && key !== 'isEnabled' && key !== 'role') {
+      whereClause[key] = modifiedFilters[key];
+    }
+  }
+
+  const [totalUsers, users] = await Promise.all([
+    prisma.user.count({ where: whereClause }),
+    prisma.user.findMany({
+      where: whereClause,
+      take: limit,
+      skip: offset,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phoneNumber: true,
+        profilePhoto: true,
+        role: true,
+        isVerified: true,
+        createdBy: true,
+        lastLogin: true,
+        dateOfBirth: true,
+        gender: true,
+        isEnabled: true,
+        disabledAt: true,
+        isFirstLogin: true,
+        isPublic: true,
+        country: true,
+        city: true,
+        province: true,
+        district: true,
+        sector: true,
+        village: true,
+        road: true,
+        postalCode: true,
+        addressLine1: true,
+        addressLine2: true,
+        title: true,
+        nfcLoginToken: true,
+        nfcLoginTokenExpires: true,
+        createdAt: true,
+        updatedAt: true,
+        bio: true
+      },
+      orderBy
+    })
+  ]);
+
+  const totalPages = Math.ceil(totalUsers / limit);
+
+  const enhancedUsers = users.map(user => ({
+    ...user,
+    fullName: `${user.firstName} ${user.lastName}`,
+    age: user.dateOfBirth ? Math.floor((new Date() - new Date(user.dateOfBirth)) / 31557600000) : null
+  }));
+
+  return {
+    users: enhancedUsers,
+    pagination: {
+      totalUsers,
+      totalPages,
+      currentPage: page,
+      usersPerPage: limit,
+      hasNextPage: page < totalPages,
+      hasPreviousPage: page > 1
+    }
+  };
 };
 
 export const updateUser = async (userId, updateData) => {
-  // Clean updateData to remove sensitive fields
-  const sanitizedData = { ...updateData };
-  
-  // Remove fields that shouldn't be updated
-  delete sanitizedData.password;
-  delete sanitizedData.role;
-  delete sanitizedData.id;
-  delete sanitizedData.createdAt;
-  delete sanitizedData.updatedAt;
-  delete sanitizedData.isVerified;
-  delete sanitizedData.verificationToken;
-  delete sanitizedData.verificationExpires;
-  
-  const [updatedRows] = await User.update(sanitizedData, {
+  const sanitizedData = Object.fromEntries(
+    Object.entries(updateData).filter(([key]) => ![
+      'password', 'role', 'id', 'createdAt', 'updatedAt', 'isVerified', 'verificationToken', 'verificationExpires'
+    ].includes(key))
+  );
+
+  const updatedUser = await prisma.user.update({
     where: { id: userId },
-    returning: true,
-    individualHooks: true
-  });
-  
-  if (updatedRows === 0) {
-    return null;
-  }
-  
-  // Return updated user
-  return await User.findByPk(userId, {
-    attributes: {
-      exclude: [
-        'password',
-        'verificationToken',
-        'verificationExpires',
-        'passwordResetToken',
-        'passwordResetExpires',
-        'createdBy',
-      ]
+    data: sanitizedData,
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phoneNumber: true,
+      profilePhoto: true,
+      role: true,
+      isVerified: true,
+      lastLogin: true,
+      dateOfBirth: true,
+      gender: true,
+      isEnabled: true,
+      disabledAt: true,
+      isFirstLogin: true,
+      isPublic: true,
+      country: true,
+      city: true,
+      province: true,
+      district: true,
+      sector: true,
+      village: true,
+      road: true,
+      postalCode: true,
+      addressLine1: true,
+      addressLine2: true,
+      title: true,
+      nfcLoginToken: true,
+      nfcLoginTokenExpires: true,
+      createdAt: true,
+      updatedAt: true,
+      bio: true
     }
   });
+
+  return updatedUser;
 };
 
 export const updateUserRole = async (userId, newRole) => {
-  // Find user first to get current role
-  const userToUpdate = await User.findOne({
+  const userToUpdate = await prisma.user.findFirst({
     where: {
       id: userId,
-      role: { [Op.notIn]: ['admin', 'manager'] }
+      role: { not: { in: ['admin', 'manager'] } }
     }
   });
-  
-  if (!userToUpdate) {
-    return null;
-  }
-  
+
+  if (!userToUpdate) throw createError(404, 'User not found or not authorized to modify this user');
+
   const previousRole = userToUpdate.role;
-  
-  // Update the role
-  await User.update(
-    { role: newRole },
-    { 
-      where: { id: userId },
-      individualHooks: true
-    }
-  );
-  
-  // Get updated user data
-  const updatedUser = await User.findByPk(userId, {
-    attributes: {
-      exclude: [
-        'password',
-        'verificationToken',
-        'verificationExpires',
-        'passwordResetToken',
-        'passwordResetExpires'
-      ]
+
+  const updatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: { role: newRole },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phoneNumber: true,
+      profilePhoto: true,
+      role: true,
+      isVerified: true,
+      lastLogin: true,
+      dateOfBirth: true,
+      gender: true,
+      isEnabled: true,
+      disabledAt: true,
+      isFirstLogin: true,
+      isPublic: true,
+      country: true,
+      city: true,
+      province: true,
+      district: true,
+      sector: true,
+      village: true,
+      road: true,
+      postalCode: true,
+      addressLine1: true,
+      addressLine2: true,
+      title: true,
+      nfcLoginToken: true,
+      nfcLoginTokenExpires: true,
+      createdAt: true,
+      updatedAt: true,
+      bio: true
     }
   });
-  
+
   return {
     user: updatedUser,
     roleChange: {

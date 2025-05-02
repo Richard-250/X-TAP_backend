@@ -5,13 +5,14 @@ import jwt from 'jsonwebtoken';
 export const emailConfig = {
   host: process.env.EMAIL_HOST || 'smtp.gmail.com',
   port: process.env.EMAIL_PORT || 587,
-  secure: false,
+  secure: process.env.EMAIL_SECURE === 'true' || false,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  from: process.env.EMAIL_FROM || 'NFC Masters <support@nfcmasters.com>'
+  from: process.env.EMAIL_FROM || 'X-TAP <support@x-tap.com>'
 };
+
 
 const transporter = nodemailer.createTransport({
   host: emailConfig.host,
@@ -20,510 +21,396 @@ const transporter = nodemailer.createTransport({
   auth: {
     user: emailConfig.auth.user,
     pass: emailConfig.auth.pass
-  }
+  },
+ 
+  pool: true,
+  maxConnections: 5,
+  rateDelta: 20000,
+  rateLimit: 5
 });
 
-const emailStyles = `
-  /* Base styles for better email client compatibility */
-  body, html {
-    margin: 0;
-    padding: 0;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    line-height: 1.5;
-    color: #333333;
-  }
-  
-  /* Main container */
-  .email-container {
-    max-width: 600px;
-    margin: 0 auto;
-    background-color: #ffffff;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
-  }
-  
-  /* Header styling */
-  .email-header {
-    background: linear-gradient(135deg, #4285f4, #34a853);
-    padding: 30px 20px;
-    text-align: center;
-  }
-  
-  .logo {
-    max-width: 180px;
-    margin-bottom: 15px;
-  }
-  
-  .header-title {
-    color: white;
-    font-size: 24px;
-    font-weight: 600;
-    margin: 0;
-    padding: 0;
-  }
-  
-  /* Content area */
-  .email-content {
-    padding: 30px 40px;
-    background-color: #ffffff;
-  }
-  
-  .greeting {
-    font-size: 18px;
-    font-weight: 600;
-    margin-bottom: 15px;
-    color: #4285f4;
-  }
-  
-  .message {
-    font-size: 16px;
-    margin-bottom: 20px;
-    color: #555555;
-  }
-  
-  /* Button styling */
-  .button-container {
-    text-align: center;
-    margin: 30px 0;
-  }
-  
-  .button {
-    display: inline-block;
-    background-color: #4285f4;
-    color: white !important;
-    font-weight: 600;
-    text-decoration: none;
-    padding: 12px 30px;
-    border-radius: 4px;
-    font-size: 16px;
-    transition: background-color 0.2s;
-  }
-  
-  .button:hover {
-    background-color: #3367d6;
-    text-decoration: none;
-  }
-  
-  /* Password display */
-  .password-container {
-    background-color: #f8f9fa;
-    padding: 15px;
-    border-radius: 4px;
-    border-left: 4px solid #4285f4;
-    margin: 20px 0;
-  }
-  
-  .password {
-    font-family: 'Courier New', monospace;
-    font-size: 18px;
-    font-weight: bold;
-    color: #3367d6;
-    letter-spacing: 1px;
-  }
-  
-  /* Footer styling */
-  .email-footer {
-    background-color: #f8f9fa;
-    padding: 20px;
-    text-align: center;
-    font-size: 14px;
-    color: #757575;
-    border-top: 1px solid #eeeeee;
-  }
-  
-  .social-links {
-    margin: 15px 0;
-  }
-  
-  .social-icon {
-    display: inline-block;
-    margin: 0 10px;
-    width: 30px;
-    height: 30px;
-  }
-  
-  .company-info {
-    margin-top: 15px;
-    font-size: 12px;
-  }
-  
-  /* Responsive adjustments */
-  @media screen and (max-width: 480px) {
-    .email-content {
-      padding: 20px;
-    }
-    
-    .button {
-      width: 100%;
-      padding: 12px 10px;
-    }
-  }
-`;
-
-const generateVerificationEmailTemplate = (user, verificationUrl, companyLogo = null) => {
-  return `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Account Verification</title>
-      <style>
-        ${emailStyles}
-      </style>
-    </head>
-    <body>
-      <div class="email-container">
-        <div class="email-header">
-          ${companyLogo ? `<img src="${companyLogo}" alt="NFC Masters Logo" class="logo">` : ''}
-          <h1 class="header-title">Welcome to NFC Masters</h1>
-        </div>
-        
-        <div class="email-content">
-          <p class="greeting">Hello ${user.firstName} ${user.lastName},</p>
-          
-          <p class="message">An administrator has created an account for you as a manager on our platform.</p>
-          
-          <p class="message">To complete your registration and set up your password, please verify your account by clicking the button below:</p>
-          
-          <div class="button-container">
-            <a href="${verificationUrl}" class="button">Verify My Account</a>
-          </div>
-          
-          <p class="message"><strong>Please note:</strong> This verification link will expire in 24 hours for security reasons.</p>
-          
-          <p class="message">If you did not request this account or believe this email was sent to you by mistake, please disregard it. No action is needed on your part.</p>
-          
-          <p class="message">If you have any questions or need assistance, please contact our support team.</p>
-          
-          <p class="message">We're excited to have you on board!</p>
-          
-          <p class="message">
-            Best regards,<br>
-            The NFC Masters Team
-          </p>
-        </div>
-        
-        <div class="email-footer">
-          <div class="social-links">
-            <a href="https://facebook.com/nfcmasters" target="_blank"><img src="https://cdn-icons-png.flaticon.com/512/733/733547.png" alt="Facebook" class="social-icon"></a>
-            <a href="https://twitter.com/nfcmasters" target="_blank"><img src="https://cdn-icons-png.flaticon.com/512/733/733579.png" alt="Twitter" class="social-icon"></a>
-            <a href="https://linkedin.com/company/nfcmasters" target="_blank"><img src="https://cdn-icons-png.flaticon.com/512/3536/3536505.png" alt="LinkedIn" class="social-icon"></a>
-          </div>
-          
-          <p>© ${new Date().getFullYear()} NFC Masters. All rights reserved.</p>
-          
-          <div class="company-info">
-            <p>123 Technology Plaza, Suite 500, San Francisco, CA 94107</p>
-            <p>If you have questions, please contact <a href="mailto:support@nfcmasters.com">support@nfcmasters.com</a></p>
-          </div>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-};
-
-const generatePasswordEmailTemplate = (user, passwordToken, loginUrl, companyLogo = null) => {
-  // Generate a one-time password link using the token
-  const baseUrl = process.env.BASE_URL;
-  const passwordViewUrl = `${baseUrl}/api/auth/view-password/${passwordToken}`;
-  
-  return `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Your Account Password</title>
-      <style>
-        ${emailStyles}
-      </style>
-    </head>
-    <body>
-      <div class="email-container">
-        <div class="email-header">
-          ${companyLogo ? `<img src="${companyLogo}" alt="NFC Masters Logo" class="logo">` : ''}
-          <h1 class="header-title">Account Activation Successful</h1>
-        </div>
-        
-        <div class="email-content">
-          <p class="greeting">Hello ${user.firstName} ${user.lastName},</p>
-          
-          <p class="message">Your account has been successfully verified and activated. You can now log in to the NFC Masters platform.</p>
-          
-          <p class="message">Click the button below to view your temporary password. <strong>Note: This password can only be viewed once for security reasons.</strong></p>
-          
-          <div class="button-container">
-            <a href="${passwordViewUrl}" class="button">View Temporary Password</a>
-          </div>
-          
-          <p class="message"><strong>Important:</strong> For security reasons, please change your password immediately after your first login.</p>
-          
-          <div class="button-container">
-            <a href="${loginUrl}" class="button">Log In Now</a>
-          </div>
-          
-          <p class="message">If you experience any issues logging in or have questions about your account, please contact our support team.</p>
-          
-          <p class="message">
-            Best regards,<br>
-            The NFC Masters Team
-          </p>
-        </div>
-        
-        <div class="email-footer">
-          <div class="social-links">
-            <a href="https://facebook.com/nfcmasters" target="_blank"><img src="https://cdn-icons-png.flaticon.com/512/733/733547.png" alt="Facebook" class="social-icon"></a>
-            <a href="https://twitter.com/nfcmasters" target="_blank"><img src="https://cdn-icons-png.flaticon.com/512/733/733579.png" alt="Twitter" class="social-icon"></a>
-            <a href="https://linkedin.com/company/nfcmasters" target="_blank"><img src="https://cdn-icons-png.flaticon.com/512/3536/3536505.png" alt="LinkedIn" class="social-icon"></a>
-          </div>
-          
-          <p>© ${new Date().getFullYear()} NFC Masters. All rights reserved.</p>
-          
-          <div class="company-info">
-            <p>123 Technology Plaza, Suite 500, San Francisco, CA 94107</p>
-            <p>If you have questions, please contact <a href="mailto:support@nfcmasters.com">support@nfcmasters.com</a></p>
-          </div>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-};
-
-export const sendPasswordEmail = async (user, password) => {
-  const baseUrl = process.env.BASE_URL;
-  const loginUrl = `${baseUrl}/api/auth/login`;
-  const companyLogo = process.env.COMPANY_LOGO_URL || null;
-  
-  // JWT secret - store this securely in environment variables
-  const JWT_SECRET = process.env.JWT_PASSWORD_SECRET;
-  
-  // Create token payload
-  const payload = {
-    userId: user.id,
-    password: password,
-    // Add viewed flag
-    viewed: false,
-    // Set expiration time (e.g., 24 hours)
-    exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60)
-  };
-  
-  // Generate JWT token
-  const passwordToken = jwt.sign(payload, JWT_SECRET);
-  
+/**
+ * Send an email using the transporter
+ * @param {Object} options - Email options 
+ * @returns {Promise} - Email sending result
+ */
+export const sendEmail = async ({ to, subject, html }) => {
   const mailOptions = {
     from: emailConfig.from,
-    to: user.email,
-    subject: 'Your NFC Masters Account is Ready',
-    html: generatePasswordEmailTemplate(user, passwordToken, loginUrl, companyLogo)
+    to,
+    subject,
+    html
   };
 
   try {
-    const info = await transporter.sendMail(mailOptions);
-    return info;
+    // Using promise to improve performance
+    return await transporter.sendMail(mailOptions);
   } catch (error) {
     if (process.env.NODE_ENV === 'testing') {
       throw error;
     }
+    console.error('Email sending failed:', error);
     error.statusCode = 500;
-    error.message = 'Internal Server Error';
+    error.message = 'Email delivery failed';
     throw error;
   }
 };
 
-export const sendVerificationEmail = async (user, token) => {
-    const baseUrl = process.env.BASE_URL;
-    const verificationUrl = `${baseUrl}/api/auth/verify/${token}`;
-    const companyLogo = process.env.COMPANY_LOGO_URL || null;
-    
-    const mailOptions = {
-      from: emailConfig.from,
-      to: user.email,
-      subject: 'Verify Your NFC Masters Account',
-      html: generateVerificationEmailTemplate(user, verificationUrl, companyLogo)
-    };
-  
-    try {
-      const info = await transporter.sendMail(mailOptions);
-      return info;
-    } catch (error) {
-      if (process.env.NODE_ENV === 'testing') {
-        throw error;
-      }
-      error.statusCode = 500;
-      error.message = 'Internal Server Error';
-      throw error;
-    }
-  };  
-
-export const sendPasswordResetEmail = async (user, token) => {
+/**
+ * Verification email template
+ * @param {Object} user - User object
+ * @param {String} token - Verification token
+ * @returns {String} - HTML email template
+ */
+const createVerificationEmailTemplate = (user, token) => {
   const baseUrl = process.env.BASE_URL;
-  const resetUrl = `${baseUrl}/api/auth/reset-password/${token}/${encodeURIComponent(user.email)}`;
-  const companyLogo = process.env.COMPANY_LOGO_URL || null;
+  const verificationUrl = `${baseUrl}/api/auth/verify/${token}`;
+  const currentYear = new Date().getFullYear();
   
-  const mailOptions = {
-    from: emailConfig.from,
-    to: user.email,
-    subject: 'Reset Your NFC Masters Password',
-    html: `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Password Reset Request</title>
-        <style>
-          ${emailStyles}
-        </style>
-      </head>
-      <body>
-        <div class="email-container">
-          <div class="email-header">
-            ${companyLogo ? `<img src="${companyLogo}" alt="NFC Masters Logo" class="logo">` : ''}
-            <h1 class="header-title">Password Reset Request</h1>
-          </div>
-          
-          <div class="email-content">
-            <p class="greeting">Hello ${user.firstName} ${user.lastName},</p>
-            
-            <p class="message">We received a request to reset your password for your NFC Masters account.</p>
-            
-            <p class="message">To set a new password, please click the button below:</p>
-            
-            <div class="button-container">
-              <a href="${resetUrl}" class="button">Reset My Password</a>
-            </div>
-            
-            <p class="message"><strong>Please note:</strong> This password reset link will expire in 1o minutes for security reasons.</p>
-            
-            <p class="message">If you did not request a password reset, please ignore this email or contact our support team if you have concerns about your account security.</p>
-            
-            <p class="message">
-              Best regards,<br>
-              The NFC Masters Team
-            </p>
-          </div>
-          
-          <div class="email-footer">
-            <div class="social-links">
-              <a href="https://facebook.com/nfcmasters" target="_blank"><img src="https://cdn-icons-png.flaticon.com/512/733/733547.png" alt="Facebook" class="social-icon"></a>
-              <a href="https://twitter.com/nfcmasters" target="_blank"><img src="https://cdn-icons-png.flaticon.com/512/733/733579.png" alt="Twitter" class="social-icon"></a>
-              <a href="https://linkedin.com/company/nfcmasters" target="_blank"><img src="https://cdn-icons-png.flaticon.com/512/3536/3536505.png" alt="LinkedIn" class="social-icon"></a>
-            </div>
-            
-            <p>© ${new Date().getFullYear()} NFC Masters. All rights reserved.</p>
-            
-            <div class="company-info">
-              <p>123 Technology Plaza, Suite 500, San Francisco, CA 94107</p>
-              <p>If you have questions, please contact <a href="mailto:support@nfcmasters.com">support@nfcmasters.com</a></p>
-            </div>
-          </div>
+  return `
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your X-TAP Account</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-100 font-sans">
+    <div class="max-w-2xl mx-auto my-8 bg-white rounded-lg shadow-md overflow-hidden">
+      <!-- Header -->
+      <div class="bg-blue-600 px-6 py-4">
+        <h1 class="text-white text-xl font-bold">Welcome to X-TAP</h1>
+      </div>
+      
+      <!-- Content -->
+      <div class="p-6">
+        <p class="text-gray-800 mb-4">Hello ${user?.firstName || ''} ${user?.lastName || ''},</p>
+        
+        <p class="text-gray-700 mb-4">An administrator has created an account for you as a manager on our platform.</p>
+        
+        <p class="text-gray-700 mb-4">To complete your registration and set up your password, please verify your account by clicking the button below:</p>
+        
+        <div class="text-center my-8">
+          <a href="${verificationUrl}" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-md inline-block">Verify My Account</a>
         </div>
-      </body>
-      </html>
-    `
-  };
-
-  try {
-    const info = await transporter.sendMail(mailOptions);
-    return info;
-  } catch (error) {
-    if (process.env.NODE_ENV === 'testing') {
-      throw error;
-    }
-    error.statusCode = 500;
-    error.message = 'Internal Server Error';
-    throw error;
-  }
+        
+        <p class="text-gray-700 mb-4"><strong>Note:</strong> This verification link will expire in 24 hours for security reasons.</p>
+        
+        <p class="text-gray-700 mb-4">If you did not request this account, please disregard this email.</p>
+        
+        <p class="text-gray-700 mt-6">Best regards,<br>The X-TAP Team</p>
+      </div>
+      
+      <!-- Footer -->
+      <div class="bg-gray-50 px-6 py-4 text-center border-t border-gray-200">
+        <p class="text-gray-600 text-sm">&copy; ${currentYear} X-TAP. All rights reserved.</p>
+        <p class="text-gray-500 text-sm mt-2">Questions? Contact <a href="mailto:support@x-tap.com" class="text-blue-600 hover:underline">support@x-tap.com</a></p>
+      </div>
+    </div>
+  </body>
+  </html>
+  `;
 };
 
-export const sendWelcomeEmail = async (user) => {
+/**
+ * Password reset email template
+ * @param {Object} user - User object
+ * @param {String} token - Password reset token
+ * @returns {String} - HTML email template
+ */
+const createPasswordResetEmailTemplate = (user, token) => {
+  const baseUrl = process.env.BASE_URL;
+  const resetUrl = `${baseUrl}/api/auth/reset-password/${token}/${encodeURIComponent(user?.email || '')}`;
+  const currentYear = new Date().getFullYear();
+  
+  return `
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset Your X-TAP Password</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-100 font-sans">
+    <div class="max-w-2xl mx-auto my-8 bg-white rounded-lg shadow-md overflow-hidden">
+      <!-- Header -->
+      <div class="bg-blue-600 px-6 py-4">
+        <h1 class="text-white text-xl font-bold">Password Reset Request</h1>
+      </div>
+      
+      <!-- Content -->
+      <div class="p-6">
+        <p class="text-gray-800 mb-4">Hello ${user?.firstName || ''} ${user?.lastName || ''},</p>
+        
+        <p class="text-gray-700 mb-4">We received a request to reset your password for your X-TAP account.</p>
+        
+        <p class="text-gray-700 mb-4">To set a new password, please click the button below:</p>
+        
+        <div class="text-center my-8">
+          <a href="${resetUrl}" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-md inline-block">Reset My Password</a>
+        </div>
+        
+        <p class="text-gray-700 mb-4"><strong>Note:</strong> This password reset link will expire in 10 minutes for security reasons.</p>
+        
+        <p class="text-gray-700 mb-4">If you did not request a password reset, please ignore this email or contact our support team.</p>
+        
+        <p class="text-gray-700 mt-6">Best regards,<br>The X-TAP Team</p>
+      </div>
+      
+      <!-- Footer -->
+      <div class="bg-gray-50 px-6 py-4 text-center border-t border-gray-200">
+        <p class="text-gray-600 text-sm">&copy; ${currentYear} X-TAP. All rights reserved.</p>
+        <p class="text-gray-500 text-sm mt-2">Questions? Contact <a href="mailto:support@x-tap.com" class="text-blue-600 hover:underline">support@x-tap.com</a></p>
+      </div>
+    </div>
+  </body>
+  </html>
+  `;
+};
+
+/**
+ * New account with password email template
+ * @param {Object} user - User object
+ * @param {String} password - User password
+ * @returns {String} - HTML email template
+ */
+const createPasswordEmailTemplate = (user, password) => {
+  const baseUrl = process.env.BASE_URL;
+  const loginUrl = `${baseUrl}/signin`;
+  const currentYear = new Date().getFullYear();
+  
+  return `
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your X-TAP Account is Ready</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-100 font-sans">
+    <div class="max-w-2xl mx-auto my-8 bg-white rounded-lg shadow-md overflow-hidden">
+      <!-- Header -->
+      <div class="bg-blue-600 px-6 py-4">
+        <h1 class="text-white text-xl font-bold">Welcome to X-TAP</h1>
+      </div>
+      
+      <!-- Content -->
+      <div class="p-6">
+        <p class="text-gray-800 mb-4">Hello ${user?.firstName || ''} ${user?.lastName || ''},</p>
+        
+        <p class="text-gray-700 mb-4">Your X-TAP account has been created. Below are your login details:</p>
+        
+        <div class="bg-gray-50 p-4 border-l-4 border-blue-500 rounded-md my-6">
+          <p class="font-medium text-gray-700 mb-2">Email: ${user?.email || ''}</p>
+          <p class="font-medium text-gray-700 mb-2">Password: ${password || ''}</p>
+        
+        </div>
+        
+        <p class="text-gray-700 mb-6">For security reasons, we recommend changing your password after your first login.</p>
+        
+        <div class="text-center my-8">
+          <a href="${loginUrl}" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-md inline-block">Login to Your Account</a>
+        </div>
+        
+        <p class="text-gray-700 mt-6">Best regards,<br>The X-TAP Team</p>
+      </div>
+      
+      <!-- Footer -->
+      <div class="bg-gray-50 px-6 py-4 text-center border-t border-gray-200">
+        <p class="text-gray-600 text-sm">&copy; ${currentYear} X-TAP. All rights reserved.</p>
+        <p class="text-gray-500 text-sm mt-2">Questions? Contact <a href="mailto:support@x-tap.com" class="text-blue-600 hover:underline">support@x-tap.com</a></p>
+      </div>
+    </div>
+  </body>
+  </html>
+  `;
+};
+
+/**
+ * Welcome email template after first login
+ * @param {Object} user - User object
+ * @returns {String} - HTML email template
+ */
+const createWelcomeEmailTemplate = (user) => {
   const baseUrl = process.env.BASE_URL;
   const dashboardUrl = `${baseUrl}/dashboard`;
-  const companyLogo = process.env.COMPANY_LOGO_URL || null;
+  const currentYear = new Date().getFullYear();
   
-  const mailOptions = {
-    from: emailConfig.from,
-    to: user.email,
-    subject: 'Welcome to NFC Masters!',
-    html: `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Welcome to NFC Masters</title>
-        <style>
-          ${emailStyles}
-        </style>
-      </head>
-      <body>
-        <div class="email-container">
-          <div class="email-header">
-            ${companyLogo ? `<img src="${companyLogo}" alt="NFC Masters Logo" class="logo">` : ''}
-            <h1 class="header-title">Welcome to NFC Masters!</h1>
-          </div>
-          
-          <div class="email-content">
-            <p class="greeting">Hello ${user.firstName} ${user.lastName},</p>
-            
-            <p class="message">Thank you for completing your account setup! We're thrilled to have you as part of the NFC Masters community.</p>
-            
-            <p class="message">Your account has been fully activated, and you now have access to all the features of our platform.</p>
-            
-            <div class="button-container">
-              <a href="${dashboardUrl}" class="button">Go to Dashboard</a>
-            </div>
-            
-            <p class="message">Here are some helpful resources to get you started:</p>
-            
-            <ul style="color: #555555; margin-bottom: 25px;">
-              <li><a href="${baseUrl}/help/getting-started" style="color: #4285f4;">Getting Started Guide</a></li>
-              <li><a href="${baseUrl}/help/faq" style="color: #4285f4;">Frequently Asked Questions</a></li>
-              <li><a href="${baseUrl}/help/support" style="color: #4285f4;">Contact Support</a></li>
-            </ul>
-            
-            <p class="message">If you have any questions or need assistance, our support team is always here to help.</p>
-            
-            <p class="message">
-              Best regards,<br>
-              The NFC Masters Team
-            </p>
-          </div>
-          
-          <div class="email-footer">
-            <div class="social-links">
-              <a href="https://facebook.com/nfcmasters" target="_blank"><img src="https://cdn-icons-png.flaticon.com/512/733/733547.png" alt="Facebook" class="social-icon"></a>
-              <a href="https://twitter.com/nfcmasters" target="_blank"><img src="https://cdn-icons-png.flaticon.com/512/733/733579.png" alt="Twitter" class="social-icon"></a>
-              <a href="https://linkedin.com/company/nfcmasters" target="_blank"><img src="https://cdn-icons-png.flaticon.com/512/3536/3536505.png" alt="LinkedIn" class="social-icon"></a>
-            </div>
-            
-            <p>© ${new Date().getFullYear()} NFC Masters. All rights reserved.</p>
-            
-            <div class="company-info">
-              <p>123 Technology Plaza, Suite 500, San Francisco, CA 94107</p>
-              <p>If you have questions, please contact <a href="mailto:support@nfcmasters.com">support@nfcmasters.com</a></p>
-            </div>
-          </div>
+  return `
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to X-TAP!</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-100 font-sans">
+    <div class="max-w-2xl mx-auto my-8 bg-white rounded-lg shadow-md overflow-hidden">
+      <!-- Header -->
+      <div class="bg-blue-600 px-6 py-4">
+        <h1 class="text-white text-xl font-bold">Welcome to X-TAP!</h1>
+      </div>
+      
+      <!-- Content -->
+      <div class="p-6">
+        <p class="text-gray-800 mb-4">Hello ${user?.firstName || ''} ${user?.lastName || ''},</p>
+        
+        <p class="text-gray-700 mb-4">Thank you for completing your account setup! We're thrilled to have you as part of the X-TAP community.</p>
+        
+        <p class="text-gray-700 mb-4">Your account has been fully activated, and you now have access to all the features of our platform.</p>
+        
+        <p class="text-gray-700 mb-4">Here are some helpful resources to get you started:</p>
+        
+        <ul class="list-disc pl-8 mb-6 text-gray-700">
+          <li class="mb-2"><a href="${baseUrl}/help/getting-started" class="text-blue-600 hover:underline">Getting Started Guide</a></li>
+          <li class="mb-2"><a href="${baseUrl}/help/faq" class="text-blue-600 hover:underline">Frequently Asked Questions</a></li>
+          <li><a href="${baseUrl}/help/support" class="text-blue-600 hover:underline">Contact Support</a></li>
+        </ul>
+        
+        <p class="text-gray-700 mb-6">If you have any questions or need assistance, our support team is always here to help.</p>
+        
+        <div class="text-center my-8">
+          <a href="${dashboardUrl}" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-md inline-block">Go to Dashboard</a>
         </div>
-      </body>
-      </html>
-    `
-  };
+        
+        <p class="text-gray-700 mt-6">Best regards,<br>The X-TAP Team</p>
+      </div>
+      
+      <!-- Footer -->
+      <div class="bg-gray-50 px-6 py-4 text-center border-t border-gray-200">
+        <p class="text-gray-600 text-sm">&copy; ${currentYear} X-TAP. All rights reserved.</p>
+        <p class="text-gray-500 text-sm mt-2">Questions? Contact <a href="mailto:support@x-tap.com" class="text-blue-600 hover:underline">support@x-tap.com</a></p>
+      </div>
+    </div>
+  </body>
+  </html>
+  `;
+};
 
-  try {
-    const info = await transporter.sendMail(mailOptions);
-    return info;
-  } catch (error) {
-    
-    if (process.env.NODE_ENV === 'testing') {
-    throw error;
-  }
-  error.statusCode = 500;
-  error.message = 'Internal Server Error';
-  throw error;
-  }
+/**
+ * Password reset confirmation email template
+ * @param {Object} user - User object
+ * @param {String} newPassword - New password
+ * @returns {String} - HTML email template
+ */
+const createPasswordResetConfirmationEmailTemplate = (user, newPassword) => {
+
+  const baseUrl = process.env.BASE_URL;
+  const loginUrl = `${baseUrl}/signin`;
+  const currentYear = new Date().getFullYear();
+  
+  return `
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your X-TAP Account is Ready</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-100 font-sans">
+    <div class="max-w-2xl mx-auto my-8 bg-white rounded-lg shadow-md overflow-hidden">
+      <!-- Header -->
+      <div class="bg-blue-600 px-6 py-4">
+        <h1 class="text-white text-xl font-bold">Welcome to X-TAP</h1>
+      </div>
+      
+      <!-- Content -->
+      <div class="p-6">
+        <p class="text-gray-800 mb-4">Hello ${user?.firstName || ''} ${user?.lastName || ''},</p>
+        
+        <p class="text-gray-700 mb-4">Your X-TAP account has be rested. Below are your login details:</p>
+        
+      <div class="bg-gray-50 p-4 border-l-4 border-blue-500 rounded-md my-6">
+          <p class="font-medium text-gray-700 mb-2">Email: ${user?.email || ''}</p>
+          <p class="font-medium text-gray-700 mb-2">Password: ${newPassword || ''}</p>
+        
+        </div>
+        
+     
+        <div class="text-center my-8">
+          <a href="${loginUrl}" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-md inline-block">Login to Your Account</a>
+        </div>
+        
+        <p class="text-gray-700 mt-6">Best regards,<br>The X-TAP Team</p>
+      </div>
+      
+      <!-- Footer -->
+      <div class="bg-gray-50 px-6 py-4 text-center border-t border-gray-200">
+        <p class="text-gray-600 text-sm">&copy; ${currentYear} X-TAP. All rights reserved.</p>
+        <p class="text-gray-500 text-sm mt-2">Questions? Contact <a href="mailto:support@x-tap.com" class="text-blue-600 hover:underline">support@x-tap.com</a></p>
+      </div>
+    </div>
+  </body>
+  </html>
+  `;
+};
+
+
+export const sendVerificationEmail = async (user, token) => {
+  const emailHtml = createVerificationEmailTemplate(user, token);
+  
+  return sendEmail({
+    to: user.email,
+    subject: 'Verify Your X-TAP Account',
+    html: emailHtml
+  });
+};
+
+
+export const sendPasswordResetEmail = async (user, token) => {
+  const emailHtml = createPasswordResetEmailTemplate(user, token);
+  
+  return sendEmail({
+    to: user.email,
+    subject: 'Reset Your X-TAP Password',
+    html: emailHtml
+  });
+};
+
+
+
+export const sendPasswordEmail = async (user, password) => {
+  const emailHtml = createPasswordEmailTemplate(user, password);
+
+  return sendEmail({
+    to: user.email,
+    subject: 'Your X-TAP Account is Ready',
+    html: emailHtml
+  });
+};
+
+/**
+ * Send welcome email to a user after first login
+ * @param {Object} user - User object
+ * @returns {Promise} - Email sending result
+ */
+export const sendWelcomeEmail = async (user) => {
+  const emailHtml = createWelcomeEmailTemplate(user);
+  
+  return sendEmail({
+    to: user.email,
+    subject: 'Welcome to X-TAP!',
+    html: emailHtml
+  });
+};
+
+/**
+ * Send password reset confirmation email to a user
+ * @param {Object} user - User object
+ * @param {String} newPassword - New password
+ * @returns {Promise} - Email sending result
+ */
+export const sendPasswordResetConfirmationEmail = async (user, newPassword) => {
+  const emailHtml = createPasswordResetConfirmationEmailTemplate(user, newPassword);
+  
+  return sendEmail({
+    to: user.email,
+    subject: 'Your Password Has Been Changed',
+    html: emailHtml
+  });
 };
